@@ -1,5 +1,8 @@
-import { UNIT_CONFIGS, UNITS_EVENTS } from "../data/units.js";
+import { UNIT_CONFIGS } from "../data/units.js";
 // 1. ====== ECS ДВИЖОК ======
+// Файл содержит ТОЛЬКО переиспользуемое ядро: ECS, хранилища данных, системы и
+// фабрики спавна. Конкретные объекты (текстуры, конфиги юнитов, состав спавна)
+// находятся в игровой логике — scripts/game.js
 const ECS = {
     nextId: 0,
     createWorld: () => ({
@@ -276,7 +279,99 @@ function animationSystem(world, ticker) {
         }
     }
 }
-// 3. ==========ИНИЦИАЛИЗАЦИЯ================
+// Система построения пространственной сетки (перестраивается каждый кадр)
+function spatialGridSystem(app, world) {
+    SpatialHashGrid.clear();
+    SpatialHashGrid.cols = Math.ceil(app.screen.width / SpatialHashGrid.cellSize);
+    const entities = world.queries.physics.entities;
+    const length = entities.length;
+    for (let i = 0; i < length; i++) {
+        const id = entities[i];
+        SpatialHashGrid.insert(id, COMPONENTS.positionX[id], COMPONENTS.positionY[id]);
+    }
+}
+// Система столкновений: сетка 3x3 вокруг каждой сущности, расталкивание и отскок
+function collisionSystem(world) {
+    const entities = world.queries.physics.entities;
+    const length = entities.length;
+    const size = SpatialHashGrid.cellSize;
+    const cols = SpatialHashGrid.cols;
+    for (let i = 0; i < length; i++) {
+        const idA = entities[i];
+        const xA = COMPONENTS.positionX[idA];
+        const yA = COMPONENTS.positionY[idA];
+        const rA = COMPONENTS.radius[idA];
+        // Вычисляем координаты текущей ячейки в сетке
+        const centerCol = Math.floor(xA / size);
+        const centerRow = Math.floor(yA / size);
+        // Перебираем текущую ячейку и 8 соседних (сетка 3х3)
+        for (let dc = -1; dc <= 1; dc++) {
+            for (let dr = -1; dr <= 1; dr++) {
+                const neighborCellId = (centerCol + dc) + (centerRow + dr) * cols;
+                const cellEntities = SpatialHashGrid.cells.get(neighborCellId);
+                if (!cellEntities) continue;
+                const cellLength = cellEntities.length;
+                for (let j = 0; j < cellLength; j++) {
+                    const idB = cellEntities[j];
+                    // Не проверяем объект сам с собой и избегаем дублирующих проверок (idA < idB)
+                    if (idA >= idB) continue;
+                    const xB = COMPONENTS.positionX[idB];
+                    const yB = COMPONENTS.positionY[idB];
+                    const rB = COMPONENTS.radius[idB];
+                    // Быстрая проверка расстояния без Math.sqrt (проверка квадратов расстояний)
+                    const dx = xB - xA;
+                    const dy = yB - yA;
+                    const distanceSq = dx * dx + dy * dy;
+                    const minDist = rA + rB;
+                    const minDistSq = minDist * minDist;
+                    if (distanceSq < minDistSq) {
+                        // Столкновение произошло! Рассчитываем точную физику отскока
+                        const distance = Math.sqrt(distanceSq) || 0.001; // Избегаем деления на 0
+                        // Нормаль столкновения
+                        const nx = dx / distance;
+                        const ny = dy / distance;
+                        // 1. Расталкиваем объекты, чтобы они не слипались (Penetration Resolution)
+                        const overlap = minDist - distance;
+                        COMPONENTS.positionX[idA] -= nx * overlap * 0.5;
+                        COMPONENTS.positionY[idA] -= ny * overlap * 0.5;
+                        COMPONENTS.positionX[idB] += nx * overlap * 0.5;
+                        COMPONENTS.positionY[idB] += ny * overlap * 0.5;
+                        // 2. Меняем вектора скоростей (отскок)
+                        // Относительная скорость
+                        const kx = COMPONENTS.velocityX[idA] - COMPONENTS.velocityX[idB];
+                        const ky = COMPONENTS.velocityY[idA] - COMPONENTS.velocityY[idB];
+                        // Скорость вдоль нормали
+                        const p = kx * nx + ky * ny;
+                        // Если объекты уже движутся в разные стороны, игнорируем
+                        if (p > 0) {
+                            COMPONENTS.velocityX[idA] -= p * nx;
+                            COMPONENTS.velocityY[idA] -= p * ny;
+                            COMPONENTS.velocityX[idB] += p * nx;
+                            COMPONENTS.velocityY[idB] += p * ny;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+// Система рендера: переносит позиции из компонентов на спрайты
+function renderSystem(world) {
+    const entities = world.queries.renderable.entities;
+    const length = entities.length;
+    for (let i = 0; i < length; i++) {
+        const id = entities[i];
+        const sprite = DATA.spriteMap[id];
+        if (sprite) {
+            // И Sprite, и AnimatedSprite имеют x/y — ветка для массивов кадров больше не нужна
+            sprite.x = COMPONENTS.positionX[id];
+            sprite.y = COMPONENTS.positionY[id];
+        }
+    }
+}
+// 3. ==========ИНИЦИАЛИЗАЦИЯ И API================
+// Инициализирует PixiJS и возвращает API движка. Конкретную игровую начинку
+// (текстуры, конфиги, спавн) создаёт игровая логика в scripts/game.js
 async function init() {
     // Инициализируем PixiJS (v8)
     const app = new PIXI.Application();
@@ -291,24 +386,11 @@ async function init() {
     // Создаем контейнер для частиц
     const particleContainer = new PIXI.Container();
     app.stage.addChild(particleContainer);
-    function renderSystem(world) {
-        const entities = world.queries.renderable.entities;
-        const length = entities.length;
-        for (let i = 0; i < length; i++) {
-            const id = entities[i];
-            const sprite = DATA.spriteMap[id];
-            if (sprite) {
-                // И Sprite, и AnimatedSprite имеют x/y — ветка для массивов кадров больше не нужна
-                sprite.x = COMPONENTS.positionX[id];
-                sprite.y = COMPONENTS.positionY[id];
-            }
-        }
-    }
+
     // getSpriteFromPool() Возвращает готовый статический спрайт для конкретного типа юнита
-    // @param {PIXI.Application} app - Экземпляр Pixi приложения
     // @param {number} typeIndex - ID конфигурации из UNIT_CONFIGS
     // @param {PIXI.Texture} [preGeneratedTexture] - Текстура, если нужно создать новый спрайт
-    function getSpriteFromPool(app, typeIndex, preGeneratedTexture) {
+    function getSpriteFromPool(typeIndex, preGeneratedTexture) {
         const pool = STATIC_SPRITE_POOLS[typeIndex];
         // Если в пуле есть готовый спящий спрайт
         if (pool && pool.length > 0) {
@@ -328,9 +410,8 @@ async function init() {
         return newSprite;
     }
     // getAnimatedSpriteFromPool() Возвращает AnimatedSprite для конкретного типа юнита
-    // @param {PIXI.Container} particleContainer - Контейнер, к которому навсегда привязывается спрайт
     // @param {number} typeIndex - ID конфигурации из UNIT_CONFIGS
-    function getAnimatedSpriteFromPool(particleContainer, typeIndex) {
+    function getAnimatedSpriteFromPool(typeIndex) {
         const pool = ANIMATED_SPRITE_POOLS[typeIndex];
         if (pool && pool.length > 0) {
             const recycledSprite = pool.pop();
@@ -360,7 +441,10 @@ async function init() {
         return app.renderer.generateTexture(graphic);
     }
     // ФАБРИКА СПАВНА
-    function spawnUnit(world, app, typeIndex, startX, startY, preGeneratedTexture) {
+    // @param {number} typeIndex - ID конфигурации из UNIT_CONFIGS
+    // @param {number} startX, startY - начальная позиция
+    // @param {PIXI.Texture} [preGeneratedTexture] - готовая текстура (иначе берётся из пула/конфига)
+    function spawnUnit(typeIndex, startX, startY, preGeneratedTexture) {
         const id = ECS.addEntity(world);
         const config = UNIT_CONFIGS[typeIndex];
         const angle = Math.random() * Math.PI * 2;
@@ -374,12 +458,12 @@ async function init() {
         ECS.addComponent(world, id, "radius", config.radius);
         ECS.addComponent(world, id, "gridCellId", -1); // Изначально вне сетки
         // ПОЛУЧАЕМ СПРАЙТ ЧЕРЕЗ ПУЛ
-        const sprite = getSpriteFromPool(app, typeIndex, preGeneratedTexture);
+        const sprite = getSpriteFromPool(typeIndex, preGeneratedTexture);
         ECS.addComponent(world, id, "spriteMap", sprite);
         return id;
     }
     // ФАБРИКА СПАВНА АНИМИРОВАННЫХ ОБЪЕКТОВ
-    function spawnAnimatedUnit(startX, startY, configId) {
+    function spawnAnimatedUnit(configId, startX, startY) {
         const id = ECS.addEntity(world);
         ECS.addComponent(world, id, "positionX", startX);
         ECS.addComponent(world, id, "positionY", startY);
@@ -390,7 +474,7 @@ async function init() {
         // animationSpeed остаётся компонентом-маркером для группы "animated"
         ECS.addComponent(world, id, "animationSpeed", UNIT_CONFIGS[configId].animationSpeed);
         // Получаем AnimatedSprite через пул
-        const sprite = getAnimatedSpriteFromPool(particleContainer, configId);
+        const sprite = getAnimatedSpriteFromPool(configId);
         sprite.x = startX;
         sprite.y = startY;
         ECS.addComponent(world, id, "spriteMap", sprite);
@@ -398,87 +482,12 @@ async function init() {
         ECS.addComponent(world, id, "radius", UNIT_CONFIGS[configId].radius);
         ECS.addComponent(world, id, "gridCellId", -1);
     }
-    function spatialGridSystem(world) {
-        SpatialHashGrid.clear();
-        SpatialHashGrid.cols = Math.ceil(app.screen.width / SpatialHashGrid.cellSize);
-        const entities = world.queries.physics.entities;
-        const length = entities.length;
-        for (let i = 0; i < length; i++) {
-            const id = entities[i];
-            SpatialHashGrid.insert(id, COMPONENTS.positionX[id], COMPONENTS.positionY[id]);
-        }
-    }
-    function collisionSystem(world) {
-        const entities = world.queries.physics.entities;
-        const length = entities.length;
-        const size = SpatialHashGrid.cellSize;
-        const cols = SpatialHashGrid.cols;
-        for (let i = 0; i < length; i++) {
-            const idA = entities[i];
-            const xA = COMPONENTS.positionX[idA];
-            const yA = COMPONENTS.positionY[idA];
-            const rA = COMPONENTS.radius[idA];
-            // Вычисляем координаты текущей ячейки в сетке
-            const centerCol = Math.floor(xA / size);
-            const centerRow = Math.floor(yA / size);
-            // Перебираем текущую ячейку и 8 соседних (сетка 3х3)
-            for (let dc = -1; dc <= 1; dc++) {
-                for (let dr = -1; dr <= 1; dr++) {
-                    const neighborCellId = (centerCol + dc) + (centerRow + dr) * cols;
-                    const cellEntities = SpatialHashGrid.cells.get(neighborCellId);
-                    if (!cellEntities) continue;
-                    const cellLength = cellEntities.length;
-                    for (let j = 0; j < cellLength; j++) {
-                        const idB = cellEntities[j];
-                        // Не проверяем объект сам с собой и избегаем дублирующих проверок (idA < idB)
-                        if (idA >= idB) continue;
-                        const xB = COMPONENTS.positionX[idB];
-                        const yB = COMPONENTS.positionY[idB];
-                        const rB = COMPONENTS.radius[idB];
-                        // Быстрая проверка расстояния без Math.sqrt (проверка квадратов расстояний)
-                        const dx = xB - xA;
-                        const dy = yB - yA;
-                        const distanceSq = dx * dx + dy * dy;
-                        const minDist = rA + rB;
-                        const minDistSq = minDist * minDist;
-                        if (distanceSq < minDistSq) {
-                            // Столкновение произошло! Рассчитываем точную физику отскока
-                            const distance = Math.sqrt(distanceSq) || 0.001; // Избегаем деления на 0
-                            // Нормаль столкновения
-                            const nx = dx / distance;
-                            const ny = dy / distance;
-                            // 1. Расталкиваем объекты, чтобы они не слипались (Penetration Resolution)
-                            const overlap = minDist - distance;
-                            COMPONENTS.positionX[idA] -= nx * overlap * 0.5;
-                            COMPONENTS.positionY[idA] -= ny * overlap * 0.5;
-                            COMPONENTS.positionX[idB] += nx * overlap * 0.5;
-                            COMPONENTS.positionY[idB] += ny * overlap * 0.5;
-                            // 2. Меняем вектора скоростей (отскок)
-                            // Относительная скорость
-                            const kx = COMPONENTS.velocityX[idA] - COMPONENTS.velocityX[idB];
-                            const ky = COMPONENTS.velocityY[idA] - COMPONENTS.velocityY[idB];
-                            // Скорость вдоль нормали
-                            const p = kx * nx + ky * ny;
-                            // Если объекты уже движутся в разные стороны, игнорируем
-                            if (p > 0) {
-                                COMPONENTS.velocityX[idA] -= p * nx;
-                                COMPONENTS.velocityY[idA] -= p * ny;
-                                COMPONENTS.velocityX[idB] += p * nx;
-                                COMPONENTS.velocityY[idB] += p * ny;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 //  Генерирует единый атлас текстур из массива PIXI.Graphics на лету
-//  @param {PIXI.Application} app - Ваше приложение PixiJS
 //  @param {Array<PIXI.Graphics>} graphicsArray - Массив кадров анимации
 //  @param {number} frameWidth - Ширина одного кадра (например, 32)
 //  @param {number} frameHeight - Высота одного кадра (например, 32)
 //  @returns {Array<PIXI.Texture>} Массив готовых текстур для ECS, делящих один текстурный источник
-    function createProgrammaticSpritesheet(app, graphicsArray, frameWidth, frameHeight) {
+    function createProgrammaticSpritesheet(graphicsArray, frameWidth, frameHeight) {
         const totalFrames = graphicsArray.length;
         // 1. Создаем один большой холст в памяти (все кадры выстроены в один горизонтальный ряд)
         const baseRenderTexture = PIXI.RenderTexture.create({
@@ -513,7 +522,7 @@ async function init() {
         return textures;
     }
     // Функция для загрузки спрайтшита из изображения
-    async function loadSpritesheetFromImage(app, imagePath, frameWidth, frameHeight) {
+    async function loadSpritesheetFromImage(imagePath, frameWidth, frameHeight) {
         try {
             // 1. Загружаем изображение как текстуру
             const texture = await PIXI.Assets.load(imagePath);
@@ -549,68 +558,26 @@ async function init() {
             return null;
         }
     }
-    // Создание текстуры круга (пример)
-    const graphic = new PIXI.Graphics().circle(0, 0, 8).fill("green").stroke({ width: 1.5, color: "green" });
-    const texture = app.renderer.generateTexture(graphic);
-    // Создаем 100 сущностей
-    for (let i = 0; i < 100; i++) {
-        const startX = 50 + Math.random() * (app.screen.width - 100)
-        const startY = 50 + Math.random() * (app.screen.height - 100)
-        spawnUnit(world, app, 0, startX, startY, texture)
-    }
-    // ПОДГОТОВКА КАДРОВ: Генерируем 4 кадра анимации для демонстрации (например, меняющийся размер кругов)
-    // 1. Генерируем "сырые" кадры графики в массив
-    const rawGraphicsFrames = [];
-    for (let i = 0; i < 4; i++) {
-        const graphic = new PIXI.Graphics()
-            .circle(0, 0, i < 3 ? 8 + i : 13 - i) // Анимация пульсации (круг растет)
-            .fill("grey")
-            //.stroke({ width: 1.5, color: "grey" });
-        rawGraphicsFrames.push(graphic);
-    }
-    // 2. Запекаем их в правильный атлас (размер кадра берем с запасом, например 32х32)
-    // Функция вернет массив текстур, имеющих ОДИН Общий Источник (Shared Source)
-    const validTextures = createProgrammaticSpritesheet(app, rawGraphicsFrames, 32, 32);
-    // 3. Сохраняем готовый массив текстур в наш справочник конфигураций
-    UNIT_CONFIGS[0].textures = validTextures; // Записываем кадры в конфиг типа 0
-    const validTexturesFromImg = await loadSpritesheetFromImage(app, './images/bullets/all.png', 32, 32);
-    // Если загрузка прошла успешно, записываем текстуры в конфиг
-    if (validTexturesFromImg) {
-        // Можно добавить новый тип юнита или заменить существующий
-        // Например, создаём новый конфиг для пуль
-        UNIT_CONFIGS[1] = {
-            ...UNIT_CONFIGS[0], // Копируем базовые параметры
-            textures: validTexturesFromImg,
-            // Можно переопределить специфичные параметры
-            baseSpeed: 3,
-            radius: 10,
-            animationSpeed: 0.2,
-            animationTime: 0
-        };
-        // Создаём анимированные объекты с загруженным спрайтшитом
-        for (let i = 0; i < 50; i++) {
-            spawnAnimatedUnit(
-                Math.random() * app.screen.width,
-                Math.random() * app.screen.height,
-                1 // Используем новый тип (индекс 1)
-            );
-        }
-    }
-    // Создаем 100 анимированных объектов
-    for (let i = 0; i < 100; i++) {
-        spawnAnimatedUnit(Math.random() * app.screen.width, Math.random() * app.screen.height, 0);
-    }
-    // Игровой цикл
+    // Игровой цикл: порядок систем фиксирован движком
     app.ticker.add((ticker) => {
         movementSystem(app, world); // 1. Двигаем объекты
-        spatialGridSystem(world); // 2. Строим пространственную сетку по новым координатам
+        spatialGridSystem(app, world); // 2. Строим пространственную сетку по новым координатам
         collisionSystem(world); // 3. Считаем столкновения на основе сетки и корректируем позиции/скорости
         animationSystem(world, ticker); // 4. Обновляем анимацию (передаём тикер целиком)
         renderSystem(world); // 5. Отрисовываем графику
     });
     // Отладочный хендл: доступ к состоянию движка из консоли браузера (window.__ENGINE)
     window.__ENGINE = { app, ECS, world, COMPONENTS, DATA, SpatialHashGrid, particleContainer, STATIC_SPRITE_POOLS, ANIMATED_SPRITE_POOLS };
+    // API движка для игровой логики
+    return {
+        app,
+        particleContainer,
+        world,
+        spawnUnit, // (typeIndex, startX, startY, preGeneratedTexture?)
+        spawnAnimatedUnit, // (configId, startX, startY)
+        createTextureFromConfig, // (config)
+        createProgrammaticSpritesheet, // (graphicsArray, frameWidth, frameHeight)
+        loadSpritesheetFromImage, // (imagePath, frameWidth, frameHeight)
+    };
 }
-init();
-// Отладочный хендл: доступ к состоянию движка из консоли браузера (window.__ENGINE)
 export {ECS, world, COMPONENTS, DATA, COMPONENT_MASKS, STATIC_SPRITE_POOLS, ANIMATED_SPRITE_POOLS, init,  }

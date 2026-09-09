@@ -16,17 +16,24 @@ python -m http.server 8123
 
 ```
 engine/
-├── index.html                  # входная точка: подключает pixi.min.js и engine.js (type="module")
+├── index.html                  # входная точка: подключает pixi.min.js и game.js (type="module")
 ├── dll/pixi.min.js             # PixiJS 8.19 (локальная копия, включает AnimatedSprite)
 ├── images/
 │   ├── bullets/all.png         # спрайтшит пуль 4×32px кадра (используется)
 │   └── tiles/tile1.png         # тайл (пока не используется)
 └── scripts/
+    ├── game.js                 # ИГРОВАЯ ЛОГИКА: текстуры, конфиги, спавн (движок здесь только вызывается)
     ├── data/units.js           # UNIT_CONFIGS (конфиги типов юнитов) + UNITS_EVENTS (константы событий)
     └── engine/
-        ├── engine.js           # ECS-ядро, данные, системы, инициализация сцены (~640 строк)
+        ├── engine.js           # чистое ядро: ECS, хранилища, системы, пулы, фабрики спавна (~640 строк)
         └── eventSystem.js      # шина событий on/off/emit/once/clear (пока НЕ подключена к игре)
 ```
+
+**Принцип разделения:** `engine.js` не содержит ни одного конкретного объекта — только
+переиспользуемые механизмы. Всё, что относится к конкретной игре (какие текстуры, какие
+типы юнитов, сколько и кого спавнить) — в `game.js`. Точка входа — `game.js`: он вызывает
+`await init()` из движка и получает API (`spawnUnit`, `spawnAnimatedUnit`,
+`createProgrammaticSpritesheet`, `loadSpritesheetFromImage`, `createTextureFromConfig`, `app`).
 
 ## Архитектура: ECS-подход
 
