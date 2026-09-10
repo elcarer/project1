@@ -237,17 +237,17 @@ wait, death, …), кадры внутри строки, проигрывани�
 (недостающие кадры — повтор последнего). Результат: `images/sprites/<имя>.png`
 (сетка) + `<имя>.json` (манифест: size, columns, animations[{name,row,frames}]).
 
-Загрузка в игре:
+Загрузка в игре — один вызов хелпера модуля assets (кэширует и PNG, и манифест):
 
 ```js
-const manifest = await (await fetch("images/sprites/mage_64.json")).json();
-const all = await assets.loadSpritesheet("images/sprites/mage_64.png", manifest.size, manifest.size);
-const anim = {};
-for (const a of manifest.animations)
-    anim[a.name] = all.slice(a.row * manifest.columns, a.row * manifest.columns + a.frames);
-// anim.wait / anim.death — массивы текстур для AnimatedSprite;
-// переключение анимации: sprite.textures = anim.death; sprite.gotoAndPlay(0);
+const mage = await assets.loadCharacter("images/sprites/mage_64.png");
+// mage.animations.wait / mage.animations.death — массивы текстур AnimatedSprite;
+// переключение анимации: sprite.textures = mage.animations.death; sprite.gotoAndPlay(0);
+// для проигрывания один раз: sprite.loop = false (смерть застывает на последнем кадре)
 ```
+
+(формат манифеста: `{size, columns, animations:[{name,row,frames}]}` — при желании
+доступен напрямую через `assets.get("<путь>#manifest")`).
 
 API автоматизации — `window.__EDITOR` (консоль/агент):
 

@@ -58,10 +58,33 @@ function createAssets() {
         return textures;
     }
 
+    // ПЕРСОНАЖ из формата пиксельного редактора: <base>.png — сетка
+    // (строка = анимация, колонка = кадр) + <base>.json — манифест
+    // {size, columns, animations:[{name,row,frames}]}.
+    // Возвращает { size, columns, animations: { wait: [текстуры], death: [...] } } —
+    // массивы готовы для AnimatedSprite (конфиг юнита: textures: anim.wait).
+    async function loadCharacter(pngUrl) {
+        const base = pngUrl.replace(/\.png$/, "");
+        let manifest = cache.get(`${base}#manifest`);
+        if (!manifest) {
+            const response = await fetch(`${base}.json`);
+            if (!response.ok) throw new Error(`Манифест не найден: ${base}.json`);
+            manifest = await response.json();
+            cache.set(`${base}#manifest`, manifest);
+        }
+        const all = await loadSpritesheet(pngUrl, manifest.size, manifest.size);
+        const animations = {};
+        for (const a of manifest.animations) {
+            animations[a.name] = all.slice(a.row * manifest.columns, a.row * manifest.columns + a.frames);
+        }
+        return { size: manifest.size, columns: manifest.columns, animations };
+    }
+
     return {
         load,
         loadTexture,
         loadSpritesheet,
+        loadCharacter,
         get,
         cache,
         get progressInfo() { return { cached: cache.size }; },
