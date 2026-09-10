@@ -236,6 +236,8 @@ window.__TEST = {
     scenes,
     assets,
     spawnWanderer,
+    spawnAnimatedUnit,
+    configs: UNIT_CONFIGS,
     setWorldBounds,
     renderer: () => app.renderer.name,
     unitsAlive: () => world.entities.length,
