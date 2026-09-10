@@ -228,6 +228,8 @@ window.__TEST = {
     input,
     scenes,
     assets,
+    spawnWanderer,
+    setWorldBounds,
     unitsAlive: () => world.entities.length,
     damagePlayer: (n) => health.damage(playerId, n),
     damageRandom: (n = 35) => {
