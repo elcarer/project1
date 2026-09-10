@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 SPRITES_DIR = ROOT / "images" / "sprites"
-SAFE_NAME = re.compile(r"^[\w\-]+\.png$")
+SAFE_NAME = re.compile(r"^[\w\-]+\.(png|json)$")
 
 
 class EditorHandler(SimpleHTTPRequestHandler):

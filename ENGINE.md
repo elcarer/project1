@@ -231,25 +231,37 @@ LOD-пропускание физики для далёких/спящих гр�
 ## Редактор персонажей (editor.html)
 
 Пиксельный редактор: сетка 64×64 (масштаб ×8), палитра + свой цвет, инструменты
-(пиксель / заливка / ластик / пипетка), кадры анимации (дубль, пустой, удалить),
-проигрывание (150 мс/кадр), экспорт горизонтального спрайтшита PNG через `POST /save`
-на сервер разработки → `images/sprites/<имя>.png` (имя файла строго ограничено).
-Загрузка в игру: `assets.loadSpritesheet("images/sprites/файл.png", 64, 64)`.
+(пиксель / заливка / ластик / пипетка), **строки-анимации** (именованные ряды:
+wait, death, …), кадры внутри строки, проигрывание, экспорт сеткой:
+**строка = анимация, колонка = кадр**. Строки выравниваются по максимальной длине
+(недостающие кадры — повтор последнего). Результат: `images/sprites/<имя>.png`
+(сетка) + `<имя>.json` (манифест: size, columns, animations[{name,row,frames}]).
+
+Загрузка в игре:
+
+```js
+const manifest = await (await fetch("images/sprites/mage_64.json")).json();
+const all = await assets.loadSpritesheet("images/sprites/mage_64.png", manifest.size, manifest.size);
+const anim = {};
+for (const a of manifest.animations)
+    anim[a.name] = all.slice(a.row * manifest.columns, a.row * manifest.columns + a.frames);
+// anim.wait / anim.death — массивы текстур для AnimatedSprite;
+// переключение анимации: sprite.textures = anim.death; sprite.gotoAndPlay(0);
+```
 
 API автоматизации — `window.__EDITOR` (консоль/агент):
 
 ```js
-E.px(x, y, "#ff0000");      // пиксель
-E.rect(x, y, w, h, c);      // прямоугольник
+E.px(x, y, "#ff0000");      E.rect(x, y, w, h, c);
 E.mirror();                 // левая половина → правая
-E.newFrame();               // дубль кадра (есть deleteFrame(i), setFrame(i), frameCount())
-E.clear();                  // очистить кадр
-E.saveSpec({size, palette, frames}); // кадры строками: символ → цвет, '.' — прозрачный
-await E.export("knight_64.png");     // сохранить спрайтшит на сервер
+E.addRow("death");          E.setRow("wait");   E.rows();
+E.newFrame(); E.deleteFrame(i); E.setFrame(i); E.frameCount(); E.clear();
+await E.export("mage_64.png");   // mage_64.png + mage_64.json
 ```
 
-Пример-референс: рыцарь 64×64 в 4 кадрах (дыхание + качание плаща) нарисован
-программно через этот API — `images/sprites/knight_64.png`.
+Референсы: `knight_64.png` (рыцарь, 4 кадра wait, горизонтальная лента — старый
+формат), `mage_64.png` + `mage_64.json` (маг: wait 4 кадра + death 5 кадров,
+формат сетки 5×2 — актуальный).
 
 ## Отладка
 

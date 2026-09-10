@@ -1,12 +1,16 @@
 // ПИКСЕЛЬНЫЙ РЕДАКТОР ПЕРСОНАЖЕЙ И АНИМАЦИЙ (engine/editor.html)
-// Рисование по сетке (мышь), кадры анимации с превью, экспорт спрайтшита
-// PNG через POST /save на локальный сервер → images/sprites/<имя>.png
-// Спрайтшит грузится движком напрямую: assets.loadSpritesheet(url, 64, 64).
+// Модель спрайтшита: СТРОКА = именованная анимация (wait, death, ...),
+// КОЛОНКА = кадр. Экспорт: сетка PNG + JSON-манифест (имена/порядок строк,
+// число кадров) через POST /save на локальный сервер → images/sprites/.
+// Загрузка в игре: assets.loadSpritesheet(url, 64, 64) нарезает построчно;
+// кадры анимации i = текстуры.slice(i * columns, i * columns + frames).
 //
-// Автоматизация (из консоли или агентом): window.__EDITOR — пиксельный API:
-//   E.px(x,y,'#ff0000')  E.rect(x,y,w,h,c)  E.mirror()  E.newFrame()
-//   E.setFrame(i)  E.frameCount()  E.clear()  E.export('name.png')
-//   E.saveSpec({size, palette, frames}) — кадры строками символов палитры
+// Автоматизация (консоль/агент): window.__EDITOR
+//   E.px/rect/mirror/get/clear            — рисование текущего кадра
+//   E.newFrame/deleteFrame/setFrame/frameCount — кадры текущей строки
+//   E.addRow(name) E.setRow(name) E.rows()     — строки-анимации
+//   E.saveSpec({size, palette, animations})     — кадры строками символов
+//   await E.export("mage_64.png")               → mage_64.png + mage_64.json
 const SIZE = 64;        // размер спрайта в пикселях
 const ZOOM = 8;         // масштаб сетки на экране
 const GRID_PX = SIZE * ZOOM;
@@ -16,21 +20,25 @@ canvas.width = GRID_PX;
 canvas.height = GRID_PX;
 const ctx = canvas.getContext("2d");
 
-// ===== СОСТОЯНИЕ =====
-let frames = [new Array(SIZE * SIZE).fill(null)]; // цвет-строка или null (прозрачный)
-let current = 0;              // индекс текущего кадра
-let color = "#9aa7b5";        // активный цвет
+const emptyFrame = () => new Array(SIZE * SIZE).fill(null);
+
+// ===== СОСТОЯНИЕ: лист анимаций =====
+let sheet = { rows: [{ name: "wait", frames: [emptyFrame()] }] };
+let rowIndex = 0;             // текущая строка-анимация
+let current = 0;              // текущий кадр внутри строки
+let color = "#9aa7b5";
 let tool = "pixel";           // pixel | fill | eraser | pick
 let playing = false;
 let playTimer = null;
-let playIndex = 0;
-let lastPixel = null;         // для непрерывной линии при зажатой мыши
+
+const curRow = () => sheet.rows[rowIndex];
+const curFrames = () => curRow().frames;
 
 // ===== ОТРИСОВКА ДОСКИ =====
 function render() {
     ctx.fillStyle = "#15171b";
     ctx.fillRect(0, 0, GRID_PX, GRID_PX);
-    const frame = frames[current];
+    const frame = curFrames()[current] || curFrames()[0];
     for (let y = 0; y < SIZE; y++) {
         for (let x = 0; x < SIZE; x++) {
             const c = frame[y * SIZE + x];
@@ -40,7 +48,6 @@ function render() {
             }
         }
     }
-    // сетка: тонкая каждые 8px, жирнее каждые 16px
     ctx.strokeStyle = "rgba(255,255,255,0.05)";
     for (let i = 8; i < SIZE; i += 8) {
         if (i % 16 === 0) continue;
@@ -65,16 +72,15 @@ function line(x1, y1, x2, y2) {
 // ===== РИСОВАНИЕ =====
 function setPixel(x, y, c) {
     if (x < 0 || y < 0 || x >= SIZE || y >= SIZE) return;
-    frames[current][y * SIZE + x] = c;
+    curFrames()[current][y * SIZE + x] = c;
 }
 
 function getPixel(x, y) {
     if (x < 0 || y < 0 || x >= SIZE || y >= SIZE) return null;
-    return frames[current][y * SIZE + x];
+    return curFrames()[current][y * SIZE + x];
 }
 
 function lineTo(x0, y0, x1, y1, c) {
-    // Алгоритм Брезенхэма — непрерывная линия при протаскивании мыши
     let dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
     let sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
     let err = dx - dy;
@@ -108,12 +114,13 @@ function canvasPos(event) {
 }
 
 let painting = false;
+let lastPixel = null;
 canvas.addEventListener("pointerdown", (event) => {
     const { x, y } = canvasPos(event);
     if (tool === "pick") { pickColor(x, y); return; }
     painting = true;
     lastPixel = { x, y };
-    if (tool === "fill") { floodFill(x, y, tool === "eraser" ? null : color); }
+    if (tool === "fill") floodFill(x, y, color);
     else setPixel(x, y, event.button === 2 ? null : color);
     render();
 });
@@ -140,6 +147,7 @@ const DEFAULT_PALETTE = [
     "#9aa7b5", "#5c6672", "#cfd8e3", "#1a1d21",
     "#d8b23a", "#c0392b", "#7a1f1a", "#3d6bb3",
     "#2e5329", "#8a5a2b", "#e8c39e", "#ffffff",
+    "#6b3fa0", "#4a2b73", "#7fe8ff", "#e5e7eb",
 ];
 const paletteEl = document.getElementById("palette");
 const colorInput = document.getElementById("colorInput");
@@ -170,12 +178,41 @@ for (const btn of document.querySelectorAll("[data-tool]")) {
     };
 }
 
-// ===== КАДРЫ =====
+// ===== СТРОКИ-АНИМАЦИИ =====
+const rowsEl = document.getElementById("rows");
+
+function renderRowsStrip() {
+    rowsEl.innerHTML = "";
+    sheet.rows.forEach((row, i) => {
+        const btn = document.createElement("button");
+        btn.className = "rowtab" + (i === rowIndex ? " active" : "");
+        btn.textContent = `${row.name} (${row.frames.length})`;
+        btn.onclick = () => { rowIndex = i; current = 0; render(); };
+        rowsEl.appendChild(btn);
+    });
+}
+
+function addRow(name) {
+    sheet.rows.push({ name, frames: [emptyFrame()] });
+    rowIndex = sheet.rows.length - 1;
+    current = 0;
+    render();
+    return rowIndex;
+}
+
+document.getElementById("addRow").onclick = () => {
+    const input = document.getElementById("rowName");
+    const name = input.value.trim() || `anim${sheet.rows.length + 1}`;
+    addRow(name);
+    input.value = "";
+};
+
+// ===== КАДРЫ ТЕКУЩЕЙ СТРОКИ =====
 const framesEl = document.getElementById("frames");
 
 function renderFramesStrip() {
     framesEl.innerHTML = "";
-    frames.forEach((frame, i) => {
+    curFrames().forEach((frame, i) => {
         const thumb = document.createElement("canvas");
         thumb.width = SIZE; thumb.height = SIZE;
         thumb.className = "thumb" + (i === current ? " active" : "");
@@ -190,17 +227,18 @@ function renderFramesStrip() {
         thumb.onclick = () => { current = i; render(); };
         framesEl.appendChild(thumb);
     });
+    renderRowsStrip();
 }
 
 function newFrame(copyCurrent = true) {
-    const data = copyCurrent ? [...frames[current]] : new Array(SIZE * SIZE).fill(null);
-    frames.splice(current + 1, 0, data);
+    const data = copyCurrent ? [...curFrames()[current]] : emptyFrame();
+    curFrames().splice(current + 1, 0, data);
     current++;
     render();
 }
 function deleteFrame() {
-    if (frames.length === 1) { frames[0] = new Array(SIZE * SIZE).fill(null); render(); return; }
-    frames.splice(current, 1);
+    if (curFrames().length === 1) { curFrames()[0] = emptyFrame(); render(); return; }
+    curFrames().splice(current, 1);
     current = Math.max(0, current - 1);
     render();
 }
@@ -209,19 +247,20 @@ document.getElementById("addFrame").onclick = () => newFrame(true);
 document.getElementById("emptyFrame").onclick = () => newFrame(false);
 document.getElementById("delFrame").onclick = deleteFrame;
 document.getElementById("clearFrame").onclick = () => {
-    frames[current] = new Array(SIZE * SIZE).fill(null);
+    curFrames()[current] = emptyFrame();
     render();
 };
 
-// ===== ПРОИГРЫВАНИЕ АНИМАЦИИ =====
+// ===== ПРОИГРЫВАНИЕ ТЕКУЩЕЙ СТРОКИ =====
 const playBtn = document.getElementById("play");
 playBtn.onclick = () => {
     playing = !playing;
     playBtn.classList.toggle("active", playing);
     if (playing) {
+        let idx = 0;
         playTimer = setInterval(() => {
-            playIndex = (playIndex + 1) % frames.length;
-            current = playIndex;
+            idx = (idx + 1) % curFrames().length;
+            current = idx;
             render();
         }, 150);
     } else {
@@ -229,43 +268,66 @@ playBtn.onclick = () => {
     }
 };
 
-// ===== ЭКСПОРТ СПРАЙТШИТА =====
+// ===== ЭКСПОРТ: СЕТКА (строки=анимации, колонки=кадры) + JSON-манифест =====
 document.getElementById("export").onclick = () => {
     const name = document.getElementById("name").value.trim() || "sprite.png";
     __EDITOR.export(name).then(r => {
         document.getElementById("status").textContent = r.ok
-            ? `Сохранено: ${r.saved} (${r.bytes} байт)`
+            ? `Сохранено: ${r.files.join(", ")} (${r.columns} колонок × ${r.rows} строк)`
             : `Ошибка: ${r.error}`;
     });
 };
 
-async function exportSpritesheet(name) {
-    const sheet = document.createElement("canvas");
-    sheet.width = SIZE * frames.length;
-    sheet.height = SIZE;
-    const sctx = sheet.getContext("2d");
-    frames.forEach((frame, i) => {
+async function saveFile(name, dataURL) {
+    const response = await fetch("/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, data: dataURL }),
+    });
+    return response.json();
+}
+
+async function exportSheet(name) {
+    // Выравниваем строки по максимальному числу колонок: недостающие кадры
+    // заполняются повтором последнего (анимация зацикливается без дыр)
+    const columns = Math.max(...sheet.rows.map(r => r.frames.length));
+    const sheetCanvas = document.createElement("canvas");
+    sheetCanvas.width = SIZE * columns;
+    sheetCanvas.height = SIZE * sheet.rows.length;
+    const sctx = sheetCanvas.getContext("2d");
+
+    const drawFrame = (frame, col, row) => {
         const img = sctx.createImageData(SIZE, SIZE);
         for (let p = 0; p < frame.length; p++) {
             const c = frame[p];
             if (!c) continue;
-            const r = parseInt(c.slice(1, 3), 16);
-            const g = parseInt(c.slice(3, 5), 16);
-            const b = parseInt(c.slice(5, 7), 16);
-            img.data[p * 4] = r;
-            img.data[p * 4 + 1] = g;
-            img.data[p * 4 + 2] = b;
+            img.data[p * 4] = parseInt(c.slice(1, 3), 16);
+            img.data[p * 4 + 1] = parseInt(c.slice(3, 5), 16);
+            img.data[p * 4 + 2] = parseInt(c.slice(5, 7), 16);
             img.data[p * 4 + 3] = 255;
         }
-        sctx.putImageData(img, i * SIZE, 0);
+        sctx.putImageData(img, col * SIZE, row * SIZE);
+    };
+
+    sheet.rows.forEach((row, r) => {
+        row.frames.forEach((frame, c) => drawFrame(frame, c, r));
+        for (let c = row.frames.length; c < columns; c++) {
+            drawFrame(row.frames[row.frames.length - 1], c, r);
+        }
     });
-    const data = sheet.toDataURL("image/png");
-    const response = await fetch("/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, data }),
-    });
-    return response.json();
+
+    const pngResult = await saveFile(name, sheetCanvas.toDataURL("image/png"));
+    if (!pngResult.saved) return { ok: false, error: pngResult.error || "save failed" };
+
+    const base = name.replace(/\.png$/, "");
+    const manifest = {
+        size: SIZE,
+        columns,
+        animations: sheet.rows.map((row, i) => ({ name: row.name, row: i, frames: row.frames.length })),
+    };
+    await saveFile(`${base}.json`, "data:application/json;base64," + btoa(unescape(encodeURIComponent(JSON.stringify(manifest, null, 2)))));
+
+    return { ok: true, saved: pngResult.saved, files: [name, `${base}.json`], columns, rows: sheet.rows.length };
 }
 
 // ===== API ДЛЯ АВТОМАТИЗАЦИИ (агент/консоль) =====
@@ -276,37 +338,63 @@ const __EDITOR = {
         for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) setPixel(x + dx, y + dy, c);
         render(); return true;
     },
-    // Зеркалирует левую половину (x < SIZE/2) в правую
     mirror: () => {
-        const f = frames[current];
+        const f = curFrames()[current];
         for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE / 2; x++) {
             f[y * SIZE + (SIZE - 1 - x)] = f[y * SIZE + x];
         }
         render(); return true;
     },
-    newFrame: () => { newFrame(true); return frames.length; },
+    // ---- строки-анимации ----
+    addRow: (name) => addRow(name || `anim${sheet.rows.length + 1}`),
+    setRow: (ref) => {
+        const i = typeof ref === "number" ? ref : sheet.rows.findIndex(r => r.name === ref);
+        if (i < 0 || i >= sheet.rows.length) return false;
+        rowIndex = i; current = 0;
+        render(); return true;
+    },
+    rows: () => sheet.rows.map(r => ({ name: r.name, frames: r.frames.length })),
+    currentRow: () => curRow().name,
+    // ---- кадры текущей строки ----
+    newFrame: () => { newFrame(true); return curFrames().length; },
     deleteFrame: (i = current) => {
+        const frames = curFrames();
         if (i < 0 || i >= frames.length || frames.length === 1) return frames.length;
         frames.splice(i, 1);
         current = Math.max(0, Math.min(current, frames.length - 1));
         render();
         return frames.length;
     },
-    setFrame: (i) => { current = Math.max(0, Math.min(i, frames.length - 1)); render(); return current; },
-    frameCount: () => frames.length,
-    clear: () => { frames[current] = new Array(SIZE * SIZE).fill(null); render(); return true; },
-    export: (name) => exportSpritesheet(name),
-    // Кадры строками: символ → цвет палитры, '.' или ' ' → прозрачный
+    setFrame: (i) => { current = Math.max(0, Math.min(i, curFrames().length - 1)); render(); return current; },
+    frameCount: () => curFrames().length,
+    clear: () => { curFrames()[current] = emptyFrame(); render(); return true; },
+    // ---- экспорт ----
+    export: (name) => exportSheet(name),
+    // Кадры строками: символ → цвет палитры, '.' или ' ' → прозрачный.
+    // spec.animations = { wait: [строки кадра...], death: [...] } — добавляет строки.
     saveSpec: (spec) => {
-        frames = spec.frames.map((rows) => rows.flatMap((row) => [...row].map((ch) => {
+        const parse = (rows) => rows.flatMap((row) => [...row].map((ch) => {
             if (ch === "." || ch === " ") return null;
             return spec.palette[ch] ?? null;
-        })));
-        current = 0;
+        }));
+        if (spec.animations) {
+            for (const [name, rows] of Object.entries(spec.animations)) {
+                const existing = sheet.rows.findIndex(r => r.name === name);
+                const frames = [];
+                for (let i = 0; i < rows.length; i += spec.size) {
+                    frames.push(parse(rows.slice(i, i + spec.size)));
+                }
+                if (existing >= 0) sheet.rows[existing].frames = frames;
+                else sheet.rows.push({ name, frames });
+            }
+            rowIndex = 0;
+        } else {
+            sheet.rows[0].frames = [parse(spec.frames)];
+            rowIndex = 0; current = 0;
+        }
         render();
-        return frames.length;
+        return sheet.rows.map(r => ({ name: r.name, frames: r.frames.length }));
     },
-    exportAllSpec: (name) => exportSpritesheet(name),
 };
 window.__EDITOR = __EDITOR;
 
