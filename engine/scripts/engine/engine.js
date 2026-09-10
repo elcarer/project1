@@ -308,6 +308,9 @@ function movementSystem(app, world, deltaMS) {
 // здесь мы только передаём ему тикер. Важно: в PixiJS 8 метод update()
 // ожидает ОБЪЕКТ ТИКЕРА (читает ticker.deltaTime), а не число —
 // при передаче числа кадр становится NaN и спрайт перестаёт отрисовываться.
+// CULLING: у скрытых (вне вида камеры) спрайтов кадры не тикают — это самая
+// дорогая линейная операция. Видимость считается renderSystem-ом прошлого кадра,
+// лаг в 1 кадр незаметен. Вернувшись в кадр, анимация продолжается с места останова.
 function animationSystem(world, ticker) {
     const entities = world.queries.animated.entities;
     const length = entities.length;
@@ -315,6 +318,7 @@ function animationSystem(world, ticker) {
         const id = entities[i];
         const sprite = DATA.spriteMap[id];
         if (sprite && sprite.textures) {
+            if (!sprite.visible) continue; // вне экрана — не тратим время на кадры
             sprite.animationSpeed = COMPONENTS.animationSpeed[id];
             sprite.update(ticker);
         }
@@ -396,17 +400,36 @@ function collisionSystem(world) {
         }
     }
 }
-// Система рендера: переносит позиции из компонентов на спрайты
-function renderSystem(world) {
+// CULLING: запас на габарит спрайта, чтобы объекты исчезали чуть за краем кадра,
+// а не в момент пересечения центра. В мировых пикселях.
+const CULL_MARGIN = 32;
+// Система рендера: переносит позиции из компонентов на спрайты и скрывает то,
+// что вне вида камеры (PixiJS полностью пропускает невидимые объекты — экономим
+// обход сцены и GPU). Вид-прямоугольник вычисляется из трансформа КОНТЕЙНЕРА МИРА:
+// без модуля камеры (scale=1, pivot=0) это просто экран, поведение корректно само
+// по себе. Камера двигает контейнер после renderSystem — видимость отстаёт на кадр,
+// запас CULL_MARGIN это перекрывает.
+function renderSystem(app, world, worldContainer) {
+    const scale = worldContainer.scale.x || 1;
+    const halfW = app.screen.width / (2 * scale) + CULL_MARGIN;
+    const halfH = app.screen.height / (2 * scale) + CULL_MARGIN;
+    const camX = worldContainer.pivot.x;
+    const camY = worldContainer.pivot.y;
+    const left = camX - halfW;
+    const right = camX + halfW;
+    const top = camY - halfH;
+    const bottom = camY + halfH;
     const entities = world.queries.renderable.entities;
     const length = entities.length;
     for (let i = 0; i < length; i++) {
         const id = entities[i];
         const sprite = DATA.spriteMap[id];
         if (sprite) {
-            // И Sprite, и AnimatedSprite имеют x/y — ветка для массивов кадров больше не нужна
-            sprite.x = COMPONENTS.positionX[id];
-            sprite.y = COMPONENTS.positionY[id];
+            const x = COMPONENTS.positionX[id];
+            const y = COMPONENTS.positionY[id];
+            sprite.x = x;
+            sprite.y = y;
+            sprite.visible = x >= left && x <= right && y >= top && y <= bottom;
         }
     }
 }
@@ -618,7 +641,7 @@ async function init() {
         spatialGridSystem(app, world); // 2. Строим пространственную сетку по новым координатам
         collisionSystem(world); // 3. Считаем столкновения на основе сетки и корректируем позиции/скорости
         animationSystem(world, ticker); // 4. Обновляем анимацию (передаём тикер целиком)
-        renderSystem(world); // 5. Отрисовываем графику
+        renderSystem(app, world, worldContainer); // 5. Отрисовываем графику (+ culling вне вида)
         for (let i = 0; i < moduleSystems.length; i++) moduleSystems[i](ticker); // 6. Системы модулей
     });
     // Отладочный хендл: доступ к состоянию движка из консоли браузера (window.__ENGINE)
