@@ -1,4 +1,8 @@
-import { UNIT_CONFIGS } from "../data/units.js";
+import { UNIT_CONFIGS, UNITS_EVENTS } from "../data/units.js";
+import { EventSystem } from "./eventSystem.js";
+// Единая шина событий движка: спавн/урон/смерть сущностей и т.д.
+// Модули и игровая логика подписываются через events.on(...), ядро — генерирует
+const events = EventSystem;
 // 1. ====== ECS ДВИЖОК ======
 // Файл содержит ТОЛЬКО переиспользуемое ядро: ECS, хранилища данных, системы и
 // фабрики спавна. Конкретные объекты (текстуры, конфиги юнитов, состав спавна)
@@ -108,6 +112,31 @@ const ECS = {
             DATA[componentName][id] = undefined;
         }
         ECS.updateQueries(world, id);
+    },
+    // Динамическая регистрация НОВОГО компонента (нужна модулям, чтобы добавлять
+    // свои данные, не трогая ядро). type — типизированный массив для SoA-чисел
+    // (Float32Array и т.д.) или Array для ссылочных данных. Возвращает маску.
+    registerComponent: (name, type = Float32Array, length = 100000) => {
+        // Повторная регистрация того же имени — идемпотентна
+        if (COMPONENT_MASKS[name]) return COMPONENT_MASKS[name];
+        // Ищем свободный бит: всего 32 (Uint32Array-маска), часть занята ядром
+        for (let bit = 1; bit <= 2147483648; bit <<= 1) {
+            let used = false;
+            for (const existing in COMPONENT_MASKS) {
+                if (COMPONENT_MASKS[existing] & bit) { used = true; break; }
+            }
+            if (!used) { COMPONENT_MASKS[name] = bit; break; }
+        }
+        if (!COMPONENT_MASKS[name]) {
+            console.warn(`Не хватило 32 бит для компонента "${name}"! Компонент не зарегистрирован.`);
+            return null;
+        }
+        if (type === Array) {
+            DATA[name] = new Array(length);
+        } else {
+            COMPONENTS[name] = ECS.defineComponent(type, length);
+        }
+        return COMPONENT_MASKS[name];
     },
     //  Создает и регистрирует группу для систем
     //  @param {Object} world
@@ -250,17 +279,29 @@ const SpatialHashGrid = {
     }
 };
 //СИСТЕМЫ-------------------------------------------------------
-// Система движения с отскоком (пробегает по массиву world.queries.movable.entities)
-function movementSystem(app, world) {
+// Границы мира для отскока. null = стены совпадают с экраном (отступ 8px,
+// прежнее поведение). Меняется через setWorldBounds() — например, когда
+// камера открывает мир больше экрана.
+let worldBounds = null;
+function setWorldBounds(rect) { worldBounds = rect; } // {x, y, width, height}
+// Система движения (пробегает по массиву world.queries.movable.entities).
+// Движение умножается на dt — нормализацию к 60 FPS: на мониторе 144 Гц
+// dt≈0.42 и объекты не улетают в 2.4 раза быстрее. Скорости по-прежнему
+// задаются в «пикселях за кадр при 60 FPS».
+function movementSystem(app, world, deltaMS) {
+    const dt = deltaMS / (1000 / 60);
+    const b = worldBounds || { x: 8, y: 8, width: app.screen.width - 16, height: app.screen.height - 16 };
+    const right = b.x + b.width;
+    const bottom = b.y + b.height;
     // Берём чистый отфильтрованный массив ID
     const entities = world.queries.movable.entities;
     // Итерируем с конца, так как внутри можем удалить сущность
     for (let i = entities.length - 1; i >= 0; i--) {
         const id = entities[i];
-        COMPONENTS.positionX[id] += COMPONENTS.velocityX[id];
-        COMPONENTS.positionY[id] += COMPONENTS.velocityY[id];
-        if (COMPONENTS.positionX[id] < 8 || COMPONENTS.positionX[id] > app.screen.width - 8) COMPONENTS.velocityX[id] *= -1;
-        if (COMPONENTS.positionY[id] < 8 || COMPONENTS.positionY[id] > app.screen.height - 8) COMPONENTS.velocityY[id] *= -1;
+        COMPONENTS.positionX[id] += COMPONENTS.velocityX[id] * dt;
+        COMPONENTS.positionY[id] += COMPONENTS.velocityY[id] * dt;
+        if (COMPONENTS.positionX[id] < b.x || COMPONENTS.positionX[id] > right) COMPONENTS.velocityX[id] *= -1;
+        if (COMPONENTS.positionY[id] < b.y || COMPONENTS.positionY[id] > bottom) COMPONENTS.velocityY[id] *= -1;
     }
 }
 // Система анимации: AnimatedSprite сам переключает кадры внутри себя,
@@ -383,9 +424,14 @@ async function init() {
         antialias: false //отключаем сглаживание пиксельарта (???)
     });
     document.body.appendChild(app.canvas);
+    // Единый контейнер МИРА: всё, что живёт в мировых координатах (юниты, эффекты),
+    // — внутри него. Камера двигает/масштабирует только этот контейнер, а HUD и
+    // оверлеи отладки лежат напрямую в app.stage и остаются неподвижными.
+    const worldContainer = new PIXI.Container();
+    app.stage.addChild(worldContainer);
     // Создаем контейнер для частиц
     const particleContainer = new PIXI.Container();
-    app.stage.addChild(particleContainer);
+    worldContainer.addChild(particleContainer);
 
     // getSpriteFromPool() Возвращает готовый статический спрайт для конкретного типа юнита
     // @param {number} typeIndex - ID конфигурации из UNIT_CONFIGS
@@ -405,8 +451,8 @@ async function init() {
         !texture && (texture = createTextureFromConfig(config))
         const newSprite = new PIXI.Sprite(texture);
         newSprite.anchor.set(0.5);
-        // Сразу добавляем на сцену. Он останется в контейнере навсегда, мы будем лишь менять visible
-        app.stage.addChild(newSprite);
+        // Сразу добавляем в контейнер мира. Он останется в нём навсегда, мы будем лишь менять visible
+        worldContainer.addChild(newSprite);
         return newSprite;
     }
     // getAnimatedSpriteFromPool() Возвращает AnimatedSprite для конкретного типа юнита
@@ -460,6 +506,7 @@ async function init() {
         // ПОЛУЧАЕМ СПРАЙТ ЧЕРЕЗ ПУЛ
         const sprite = getSpriteFromPool(typeIndex, preGeneratedTexture);
         ECS.addComponent(world, id, "spriteMap", sprite);
+        events.emit(UNITS_EVENTS.SPAWNED, { id, configId: typeIndex });
         return id;
     }
     // ФАБРИКА СПАВНА АНИМИРОВАННЫХ ОБЪЕКТОВ
@@ -481,6 +528,8 @@ async function init() {
         // Записываем параметры для физики
         ECS.addComponent(world, id, "radius", UNIT_CONFIGS[configId].radius);
         ECS.addComponent(world, id, "gridCellId", -1);
+        events.emit(UNITS_EVENTS.SPAWNED, { id, configId });
+        return id;
     }
 //  Генерирует единый атлас текстур из массива PIXI.Graphics на лету
 //  @param {Array<PIXI.Graphics>} graphicsArray - Массив кадров анимации
@@ -558,26 +607,39 @@ async function init() {
             return null;
         }
     }
+    // Системы модулей: ядро не знает об их числе и назначении, просто вызывает
+    // каждый кадр ПОСЛЕ своих пяти систем. Модули (камера, FX, HUD, планировщик,
+    // отладка) регистрируются через addSystem и потому подключаются опционально.
+    const moduleSystems = [];
+    function addSystem(fn) { moduleSystems.push(fn); }
     // Игровой цикл: порядок систем фиксирован движком
     app.ticker.add((ticker) => {
-        movementSystem(app, world); // 1. Двигаем объекты
+        movementSystem(app, world, ticker.deltaMS); // 1. Двигаем объекты (с учётом FPS)
         spatialGridSystem(app, world); // 2. Строим пространственную сетку по новым координатам
         collisionSystem(world); // 3. Считаем столкновения на основе сетки и корректируем позиции/скорости
         animationSystem(world, ticker); // 4. Обновляем анимацию (передаём тикер целиком)
         renderSystem(world); // 5. Отрисовываем графику
+        for (let i = 0; i < moduleSystems.length; i++) moduleSystems[i](ticker); // 6. Системы модулей
     });
     // Отладочный хендл: доступ к состоянию движка из консоли браузера (window.__ENGINE)
-    window.__ENGINE = { app, ECS, world, COMPONENTS, DATA, SpatialHashGrid, particleContainer, STATIC_SPRITE_POOLS, ANIMATED_SPRITE_POOLS };
+    window.__ENGINE = { app, ECS, world, COMPONENTS, DATA, SpatialHashGrid, particleContainer, worldContainer, STATIC_SPRITE_POOLS, ANIMATED_SPRITE_POOLS, events };
     // API движка для игровой логики
     return {
         app,
+        worldContainer,
         particleContainer,
         world,
+        events, // шина событий (EventSystem)
+        ECS, // доступ к registerComponent/createQuery для модулей
+        COMPONENTS, DATA, // хранилища — модулям и отладке
+        SpatialHashGrid,
         spawnUnit, // (typeIndex, startX, startY, preGeneratedTexture?)
         spawnAnimatedUnit, // (configId, startX, startY)
         createTextureFromConfig, // (config)
         createProgrammaticSpritesheet, // (graphicsArray, frameWidth, frameHeight)
         loadSpritesheetFromImage, // (imagePath, frameWidth, frameHeight)
+        addSystem, // (fn(ticker)) — система модуля, вызывается после ядра
+        setWorldBounds, // ({x, y, width, height}) или null — границы отскока
     };
 }
-export {ECS, world, COMPONENTS, DATA, COMPONENT_MASKS, STATIC_SPRITE_POOLS, ANIMATED_SPRITE_POOLS, init,  }
+export {ECS, world, COMPONENTS, DATA, COMPONENT_MASKS, STATIC_SPRITE_POOLS, ANIMATED_SPRITE_POOLS, events, init,  }
