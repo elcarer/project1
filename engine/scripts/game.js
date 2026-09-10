@@ -173,8 +173,8 @@ scenes.add("game", {
         COMPONENTS.velocityX[playerId] = axis.x * PLAYER_SPEED;
         COMPONENTS.velocityY[playerId] = axis.y * PLAYER_SPEED;
 
-        // [camera] зум колесом
-        if (input.pointer.wheel !== 0) camera.zoomBy(1 + input.pointer.wheel * 0.1);
+        // [camera] зум колесом: вверх (deltaY<0) — приближаем, вниз — отдаляем
+        if (input.pointer.wheel !== 0) camera.zoomBy(1 - input.pointer.wheel * 0.1);
         // [input + audio + fx + camera.screenToWorld] Клик — всплеск частиц в точке мира
         if (input.pointer.pressed) {
             const p = camera.screenToWorld(input.pointer.x, input.pointer.y);
