@@ -246,8 +246,11 @@ const ANIMATED_SPRITE_POOLS = {};
 // Объект сетки коллизий
 const SpatialHashGrid = {
     cellSize: 32, // Размер ячейки в пикселях (чуть больше максимального диаметра объекта)
-    cols: Math.ceil(window.innerWidth / 32), // Количество колонок
     cells: new Map(), // Карта: ключ — ID ячейки, значение — массив ID сущностей
+    // Смещение ключа ячейки: ключ уникален для координат ячеек в диапазоне ±32768
+    // (≈ ±1 млн пикселей) — прежняя схема «col + row*cols» конфликтовала ключами
+    // при отрицательных координатах, теперь коллизий ключей нет в принципе.
+    _KEY_OFFSET: 32768,
     // Переиспользуемые массивы ячеек: вместо аллокации нового массива на каждую
     // ячейку каждый кадр — забираем «спящие» массивы из freeArrays (меньше мусора для GC)
     freeArrays: [],
@@ -261,10 +264,17 @@ const SpatialHashGrid = {
     },
     // Получить уникальный ID ячейки по координатам X и Y
     getCellKey: function(x, y) {
-        const col = Math.floor(x / this.cellSize);
-        const row = Math.floor(y / this.cellSize);
-        // Хэш-функция, превращающая координаты сетки в уникальный индекс
-        return col + row * this.cols;
+        const col = Math.floor(x / this.cellSize) + this._KEY_OFFSET;
+        const row = Math.floor(y / this.cellSize) + this._KEY_OFFSET;
+        // Старший и младший компоненты ключа не пересекаются: ключ уникален всегда
+        return col * 65536 + row;
+    },
+    // Разбор ключа обратно в координаты ячейки (нужен коллизиям по парам ячеек и отладке)
+    getCellCoords: function(key) {
+        return {
+            col: Math.floor(key / 65536) - this._KEY_OFFSET,
+            row: (key % 65536) - this._KEY_OFFSET,
+        };
     },
     // Добавить сущность в сетку
     insert: function(id, x, y) {
@@ -327,7 +337,6 @@ function animationSystem(world, ticker) {
 // Система построения пространственной сетки (перестраивается каждый кадр)
 function spatialGridSystem(app, world) {
     SpatialHashGrid.clear();
-    SpatialHashGrid.cols = Math.ceil(app.screen.width / SpatialHashGrid.cellSize);
     const entities = world.queries.physics.entities;
     const length = entities.length;
     for (let i = 0; i < length; i++) {
@@ -335,66 +344,79 @@ function spatialGridSystem(app, world) {
         SpatialHashGrid.insert(id, COMPONENTS.positionX[id], COMPONENTS.positionY[id]);
     }
 }
-// Система столкновений: сетка 3x3 вокруг каждой сущности, расталкивание и отскок
+// Полу-соседство ячеек: право, низ-лево, низ, низ-право. Каждая пара ячеек
+// (а значит и каждая пара сущностей) рассматривается РОВНО ОДИН РАЗ —
+// раньше каждая сущность сканировала 3×3 ячейки и пары проверялись дважды.
+const CELL_NEIGHBOR_OFFSETS = [[1, 0], [-1, 1], [0, 1], [1, 1]];
+// Разрешение столкновения пары сущностей: расталкивание (penetration resolution)
+// и упругий отскок вдоль нормали. Горячая функция — вызывается для каждой пары.
+function resolveCollision(idA, idB) {
+    const xA = COMPONENTS.positionX[idA];
+    const yA = COMPONENTS.positionY[idA];
+    const xB = COMPONENTS.positionX[idB];
+    const yB = COMPONENTS.positionY[idB];
+    const rA = COMPONENTS.radius[idA];
+    const rB = COMPONENTS.radius[idB];
+    // Быстрая проверка расстояния без Math.sqrt (сравнение квадратов расстояний)
+    const dx = xB - xA;
+    const dy = yB - yA;
+    const distanceSq = dx * dx + dy * dy;
+    const minDist = rA + rB;
+    const minDistSq = minDist * minDist;
+    if (distanceSq >= minDistSq) return;
+    // Столкновение произошло! Рассчитываем точную физику отскока
+    const distance = Math.sqrt(distanceSq) || 0.001; // Избегаем деления на 0
+    // Нормаль столкновения
+    const nx = dx / distance;
+    const ny = dy / distance;
+    // 1. Расталкиваем объекты, чтобы они не слипались
+    const overlap = minDist - distance;
+    COMPONENTS.positionX[idA] -= nx * overlap * 0.5;
+    COMPONENTS.positionY[idA] -= ny * overlap * 0.5;
+    COMPONENTS.positionX[idB] += nx * overlap * 0.5;
+    COMPONENTS.positionY[idB] += ny * overlap * 0.5;
+    // 2. Меняем вектора скоростей (отскок)
+    const kx = COMPONENTS.velocityX[idA] - COMPONENTS.velocityX[idB];
+    const ky = COMPONENTS.velocityY[idA] - COMPONENTS.velocityY[idB];
+    // Скорость вдоль нормали
+    const p = kx * nx + ky * ny;
+    // Если объекты уже движутся в разные стороны, игнорируем
+    if (p > 0) {
+        COMPONENTS.velocityX[idA] -= p * nx;
+        COMPONENTS.velocityY[idA] -= p * ny;
+        COMPONENTS.velocityX[idB] += p * nx;
+        COMPONENTS.velocityY[idB] += p * ny;
+    }
+}
+// Система столкновений: обходит ЯЧЕЙКИ (а не сущности). Для каждой ячейки —
+// пары внутри неё и пары с четырьмя «передними» соседями. Число обращений к
+// карте ячеек падает с 9 на сущность до 5 на ячейку, дубликаты пар исчезают.
 function collisionSystem(world) {
-    const entities = world.queries.physics.entities;
-    const length = entities.length;
-    const size = SpatialHashGrid.cellSize;
-    const cols = SpatialHashGrid.cols;
-    for (let i = 0; i < length; i++) {
-        const idA = entities[i];
-        const xA = COMPONENTS.positionX[idA];
-        const yA = COMPONENTS.positionY[idA];
-        const rA = COMPONENTS.radius[idA];
-        // Вычисляем координаты текущей ячейки в сетке
-        const centerCol = Math.floor(xA / size);
-        const centerRow = Math.floor(yA / size);
-        // Перебираем текущую ячейку и 8 соседних (сетка 3х3)
-        for (let dc = -1; dc <= 1; dc++) {
-            for (let dr = -1; dr <= 1; dr++) {
-                const neighborCellId = (centerCol + dc) + (centerRow + dr) * cols;
-                const cellEntities = SpatialHashGrid.cells.get(neighborCellId);
-                if (!cellEntities) continue;
-                const cellLength = cellEntities.length;
-                for (let j = 0; j < cellLength; j++) {
-                    const idB = cellEntities[j];
-                    // Не проверяем объект сам с собой и избегаем дублирующих проверок (idA < idB)
-                    if (idA >= idB) continue;
-                    const xB = COMPONENTS.positionX[idB];
-                    const yB = COMPONENTS.positionY[idB];
-                    const rB = COMPONENTS.radius[idB];
-                    // Быстрая проверка расстояния без Math.sqrt (проверка квадратов расстояний)
-                    const dx = xB - xA;
-                    const dy = yB - yA;
-                    const distanceSq = dx * dx + dy * dy;
-                    const minDist = rA + rB;
-                    const minDistSq = minDist * minDist;
-                    if (distanceSq < minDistSq) {
-                        // Столкновение произошло! Рассчитываем точную физику отскока
-                        const distance = Math.sqrt(distanceSq) || 0.001; // Избегаем деления на 0
-                        // Нормаль столкновения
-                        const nx = dx / distance;
-                        const ny = dy / distance;
-                        // 1. Расталкиваем объекты, чтобы они не слипались (Penetration Resolution)
-                        const overlap = minDist - distance;
-                        COMPONENTS.positionX[idA] -= nx * overlap * 0.5;
-                        COMPONENTS.positionY[idA] -= ny * overlap * 0.5;
-                        COMPONENTS.positionX[idB] += nx * overlap * 0.5;
-                        COMPONENTS.positionY[idB] += ny * overlap * 0.5;
-                        // 2. Меняем вектора скоростей (отскок)
-                        // Относительная скорость
-                        const kx = COMPONENTS.velocityX[idA] - COMPONENTS.velocityX[idB];
-                        const ky = COMPONENTS.velocityY[idA] - COMPONENTS.velocityY[idB];
-                        // Скорость вдоль нормали
-                        const p = kx * nx + ky * ny;
-                        // Если объекты уже движутся в разные стороны, игнорируем
-                        if (p > 0) {
-                            COMPONENTS.velocityX[idA] -= p * nx;
-                            COMPONENTS.velocityY[idA] -= p * ny;
-                            COMPONENTS.velocityX[idB] += p * nx;
-                            COMPONENTS.velocityY[idB] += p * ny;
-                        }
-                    }
+    const offset = SpatialHashGrid._KEY_OFFSET;
+    for (const [cellId, cellEntities] of SpatialHashGrid.cells) {
+        const n = cellEntities.length;
+        if (n === 0) continue;
+        // 1. Пары внутри ячейки
+        for (let i = 0; i < n - 1; i++) {
+            const idA = cellEntities[i];
+            for (let j = i + 1; j < n; j++) {
+                resolveCollision(idA, cellEntities[j]);
+            }
+        }
+        // 2. Пары с половиной соседних ячеек
+        const coords = SpatialHashGrid.getCellCoords(cellId);
+        const col = coords.col + offset;
+        const row = coords.row + offset;
+        for (let k = 0; k < 4; k++) {
+            const neighbor = SpatialHashGrid.cells.get(
+                (col + CELL_NEIGHBOR_OFFSETS[k][0]) * 65536 + (row + CELL_NEIGHBOR_OFFSETS[k][1])
+            );
+            if (!neighbor) continue;
+            const m = neighbor.length;
+            for (let i = 0; i < n; i++) {
+                const idA = cellEntities[i];
+                for (let j = 0; j < m; j++) {
+                    resolveCollision(idA, neighbor[j]);
                 }
             }
         }
@@ -444,7 +466,8 @@ async function init() {
         // height: 600, //высота экрана в пикселях
         backgroundColor: "black",
         resizeTo: window, //растянуть на всё окно
-        antialias: false //отключаем сглаживание пиксельарта (???)
+        antialias: false, //отключаем сглаживание пиксельарта (???)
+        preference: "webgpu" // предпочитаемый рендерер: нет WebGPU — PixiJS сам откатится на WebGL
     });
     document.body.appendChild(app.canvas);
     // Единый контейнер МИРА: всё, что живёт в мировых координатах (юниты, эффекты),
@@ -461,19 +484,22 @@ async function init() {
     // @param {PIXI.Texture} [preGeneratedTexture] - Текстура, если нужно создать новый спрайт
     function getSpriteFromPool(typeIndex, preGeneratedTexture) {
         const pool = STATIC_SPRITE_POOLS[typeIndex];
+        const config = UNIT_CONFIGS[typeIndex];
+        const scale = config.spriteScale || 1;
         // Если в пуле есть готовый спящий спрайт
         if (pool && pool.length > 0) {
             const recycledSprite = pool.pop();
             recycledSprite.visible = true; // Снова делаем его видимым
+            recycledSprite.scale.set(scale);
             return recycledSprite;
         }
         // Если пул пуст — создаем новый спрайт с нуля (это произойдет только на старте или при нехватке спрайтов в пуле)
-        const config = UNIT_CONFIGS[typeIndex];
         let texture = preGeneratedTexture;
         //Если пул пуст и если текстуру не передали, генерируем её на основе конфига
         !texture && (texture = createTextureFromConfig(config))
         const newSprite = new PIXI.Sprite(texture);
         newSprite.anchor.set(0.5);
+        newSprite.scale.set(scale);
         // Сразу добавляем в контейнер мира. Он останется в нём навсегда, мы будем лишь менять visible
         worldContainer.addChild(newSprite);
         return newSprite;
@@ -482,14 +508,16 @@ async function init() {
     // @param {number} typeIndex - ID конфигурации из UNIT_CONFIGS
     function getAnimatedSpriteFromPool(typeIndex) {
         const pool = ANIMATED_SPRITE_POOLS[typeIndex];
+        const config = UNIT_CONFIGS[typeIndex];
+        const scale = config.spriteScale || 1;
         if (pool && pool.length > 0) {
             const recycledSprite = pool.pop();
-            recycledSprite.animationSpeed = UNIT_CONFIGS[typeIndex].animationSpeed;
+            recycledSprite.animationSpeed = config.animationSpeed;
             recycledSprite.gotoAndPlay(0);
             recycledSprite.visible = true;
+            recycledSprite.scale.set(scale);
             return recycledSprite;
         }
-        const config = UNIT_CONFIGS[typeIndex];
         // Один AnimatedSprite вместо массива спрайтов-кадров: 1 объект сцены на юнита
         // вместо N, переключение кадров встроено в сам спрайт.
         // autoUpdate=false: кадрами управляет наша система анимации (детерминированный
@@ -498,6 +526,7 @@ async function init() {
         animatedSprite.anchor.set(0.5);
         animatedSprite.animationSpeed = config.animationSpeed;
         animatedSprite.gotoAndPlay(0);
+        animatedSprite.scale.set(scale);
         particleContainer.addChild(animatedSprite);
         return animatedSprite;
     }
@@ -665,4 +694,4 @@ async function init() {
         setWorldBounds, // ({x, y, width, height}) или null — границы отскока
     };
 }
-export {ECS, world, COMPONENTS, DATA, COMPONENT_MASKS, STATIC_SPRITE_POOLS, ANIMATED_SPRITE_POOLS, events, init,  }
+export {ECS, world, COMPONENTS, DATA, COMPONENT_MASKS, SpatialHashGrid, STATIC_SPRITE_POOLS, ANIMATED_SPRITE_POOLS, events, init,  }

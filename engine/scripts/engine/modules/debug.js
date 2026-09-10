@@ -57,10 +57,9 @@ function createDebug({ app, addSystem = null, world = null, grid = null, compone
             // Рисуем только занятые ячейки сетки коллизий
             for (const [cellId, entities] of grid.cells) {
                 if (entities.length === 0) continue;
-                const col = cellId % grid.cols;
-                const row = Math.floor(cellId / grid.cols);
+                const coords = grid.getCellCoords(cellId);
                 const s = grid.cellSize;
-                visual.rect(col * s, row * s, s, s).stroke({ width: 1, color: 0x0044ff, alpha: 0.5 });
+                visual.rect(coords.col * s, coords.row * s, s, s).stroke({ width: 1, color: 0x0044ff, alpha: 0.5 });
             }
         }
         if (state.showHitboxes && components && world) {

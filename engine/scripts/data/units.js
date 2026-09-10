@@ -6,7 +6,7 @@ const UNIT_CONFIGS = [{
     textures: [], // Сюда мы запишем массив текстур кадров при старте
     animationSpeed: 0.2,
     animationTime: 0,
-    radius: 10,
+    radius: 5, // уполовнен радиус: в кадре помещается вдвое больше объектов
     color: "grey",
 }]
 const UNITS_EVENTS = {

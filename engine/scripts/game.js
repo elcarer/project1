@@ -32,37 +32,44 @@ const {
     setWorldBounds,
 } = engine;
 
+console.log(`[engine] рендерер: ${app.renderer.name}`); // webgpu или webgl (откат)
+
 // ===== [assets] Загрузка спрайтшита с прогрессом =====
 const assets = createAssets();
 await assets.load(["./images/bullets/all.png"], (p) => console.log(`[assets] прогресс: ${(p * 100) | 0}%`));
+// Пули нарезаем по НАТИВНОМУ размеру кадра арта (32×32), а уполовнивание
+// делаем масштабом спрайта (spriteScale: 0.5) — иначе кадры режутся на четверти
 const bulletTextures = await assets.loadSpritesheet("./images/bullets/all.png", 32, 32);
 console.log(`[assets] кадров нарезано: ${bulletTextures.length}`);
 
 // ===== Текстуры и конфиги (тип 0 — пульсирующий, 1 — пуля, 2 — игрок) =====
+// Размеры объектов уполовнены (радиус 5 вместо 10, кадры 16px вместо 32):
+// в кадре помещается вдвое больше, замеры производительности честнее.
 const rawGraphicsFrames = [];
 for (let i = 0; i < 4; i++) {
     const graphic = new PIXI.Graphics()
-        .circle(0, 0, i < 3 ? 8 + i : 13 - i)
+        .circle(0, 0, i < 3 ? 4 + i : 6.5 - i)
         .fill("grey")
     rawGraphicsFrames.push(graphic);
 }
-UNIT_CONFIGS[0].textures = createProgrammaticSpritesheet(rawGraphicsFrames, 32, 32);
+UNIT_CONFIGS[0].textures = createProgrammaticSpritesheet(rawGraphicsFrames, 16, 16);
 
 UNIT_CONFIGS[1] = {
     ...UNIT_CONFIGS[0],
     textures: bulletTextures,
     baseSpeed: 3,
-    radius: 10,
+    radius: 5,
+    spriteScale: 0.5, // арт 32×32, отображаем в половинном масштабе
     animationSpeed: 0.2,
 };
 
-const greenGraphic = new PIXI.Graphics().circle(0, 0, 12).fill("royalblue").stroke({ width: 2, color: "lightblue" });
+const greenGraphic = new PIXI.Graphics().circle(0, 0, 6).fill("royalblue").stroke({ width: 2, color: "lightblue" });
 const playerTexture = app.renderer.generateTexture(greenGraphic);
 UNIT_CONFIGS[2] = {
     name: "Игрок",
     maxHp: 100,
     baseSpeed: 4, // используется только для начального разлёта — игроком управляем напрямую
-    radius: 12,
+    radius: 6,
     color: "royalblue",
 };
 
@@ -230,6 +237,7 @@ window.__TEST = {
     assets,
     spawnWanderer,
     setWorldBounds,
+    renderer: () => app.renderer.name,
     unitsAlive: () => world.entities.length,
     damagePlayer: (n) => health.damage(playerId, n),
     damageRandom: (n = 35) => {
