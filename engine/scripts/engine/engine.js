@@ -1,5 +1,5 @@
-import { UNIT_CONFIGS, UNITS_EVENTS } from "../data/units.js";
-import { EventSystem } from "./eventSystem.js";
+import { UNIT_CONFIGS, UNITS_EVENTS } from "../data/units.js?v=2";
+import { EventSystem } from "./eventSystem.js?v=2";
 // Единая шина событий движка: спавн/урон/смерть сущностей и т.д.
 // Модули и игровая логика подписываются через events.on(...), ядро — генерирует
 const events = EventSystem;
@@ -243,26 +243,37 @@ const physicsGroup = ECS.createQuery(world, "physics", ["positionX", "positionY"
 // достать спрайт не того вида (латентный краш при смерти юнитов).
 const STATIC_SPRITE_POOLS = {};
 const ANIMATED_SPRITE_POOLS = {};
-// Объект сетки коллизий
+// ДВУХУРОВНЕВАЯ СЕТКА КОЛЛИЗИЙ
+// Точный уровень (cellSize): хранит ID сущностей по ячейкам, пары ищутся здесь.
+// Грубый уровень (coarseSize, блок 4×4 точных ячеек): битовая карта занятости —
+// если весь блок пуст, точный lookup соседней ячейки пропускается целиком.
 const SpatialHashGrid = {
-    cellSize: 32, // Размер ячейки в пикселях (чуть больше максимального диаметра объекта)
-    cells: new Map(), // Карта: ключ — ID ячейки, значение — массив ID сущностей
-    // Смещение ключа ячейки: ключ уникален для координат ячеек в диапазоне ±32768
-    // (≈ ±1 млн пикселей) — прежняя схема «col + row*cols» конфликтовала ключами
-    // при отрицательных координатах, теперь коллизий ключей нет в принципе.
+    cellSize: 16, // точная ячейка: ≥ удвоенной суммы радиусов пары (см. spatialGridSystem)
+    coarseSize: 64, // грубый блок 64×64px = 4×4 точных ячеек
+    useCoarse: false, // грубый уровень ВЫКЛЮЧЕН по данным замеров: на плотной толпе даёт
+    // +10% кадра (все блоки заняты — только лишние проверки), в разреженном мире нейтрален.
+    // Оставлен как диагностическая опция (переключается в консоли для A/B).
+    cells: new Map(), // Карта: ключ — ID точной ячейки, значение — массив ID сущностей
+    // Грубый уровень: плоская карта занятости 1024×1024 блоков (±32768px, 1 МБ),
+    // очищается fill(0) каждый кадр — быстрее, чем перебирать тронутые блоки
+    _coarse: new Uint8Array(1024 * 1024),
+    _COARSE_OFFSET: 512,
+    // Смещение ключа точной ячейки: ключ уникален для координат ячеек в диапазоне ±32768
+    // (≈ ±0.5 млн пикселей) — коллизии ключей невозможны даже при отрицательных координатах.
     _KEY_OFFSET: 32768,
     // Переиспользуемые массивы ячеек: вместо аллокации нового массива на каждую
     // ячейку каждый кадр — забираем «спящие» массивы из freeArrays (меньше мусора для GC)
     freeArrays: [],
     // Очистка сетки каждый кадр перед заполнением
     clear: function() {
+        this._coarse.fill(0);
         for (const cellArray of this.cells.values()) {
             cellArray.length = 0;
             this.freeArrays.push(cellArray);
         }
         this.cells.clear();
     },
-    // Получить уникальный ID ячейки по координатам X и Y
+    // Получить уникальный ID точной ячейки по координатам X и Y
     getCellKey: function(x, y) {
         const col = Math.floor(x / this.cellSize) + this._KEY_OFFSET;
         const row = Math.floor(y / this.cellSize) + this._KEY_OFFSET;
@@ -276,10 +287,13 @@ const SpatialHashGrid = {
             row: (key % 65536) - this._KEY_OFFSET,
         };
     },
-    // Добавить сущность в сетку
+    // Добавить сущность в сетку (+ отметить занятость грубого блока)
     insert: function(id, x, y) {
         const cellId = this.getCellKey(x, y);
         COMPONENTS.gridCellId[id] = cellId;
+        const cc = Math.floor(x / this.coarseSize) + this._COARSE_OFFSET;
+        const cr = Math.floor(y / this.coarseSize) + this._COARSE_OFFSET;
+        if (cc >= 0 && cc < 1024 && cr >= 0 && cr < 1024) this._coarse[cc * 1024 + cr] = 1;
         let cellArray = this.cells.get(cellId);
         if (!cellArray) {
             cellArray = this.freeArrays.pop() || [];
@@ -337,6 +351,14 @@ function animationSystem(world, ticker) {
 // Система построения пространственной сетки (перестраивается каждый кадр)
 function spatialGridSystem(app, world) {
     SpatialHashGrid.clear();
+    // Точная ячейка обязана быть ≥ максимальной дистанции проверки пары (суммы двух
+    // радиусов), иначе пара может оказаться дальше соседней ячейки и потеряться.
+    // Берём с запасом минимум 16px; конфигов немного, скан копеечный.
+    let maxRadius = 0;
+    for (const config of UNIT_CONFIGS) {
+        if (config && config.radius > maxRadius) maxRadius = config.radius;
+    }
+    SpatialHashGrid.cellSize = Math.max(16, maxRadius * 2);
     const entities = world.queries.physics.entities;
     const length = entities.length;
     for (let i = 0; i < length; i++) {
@@ -393,6 +415,8 @@ function resolveCollision(idA, idB) {
 // карте ячеек падает с 9 на сущность до 5 на ячейку, дубликаты пар исчезают.
 function collisionSystem(world) {
     const offset = SpatialHashGrid._KEY_OFFSET;
+    const coarse = SpatialHashGrid._coarse;
+    const useCoarse = SpatialHashGrid.useCoarse;
     for (const [cellId, cellEntities] of SpatialHashGrid.cells) {
         const n = cellEntities.length;
         if (n === 0) continue;
@@ -408,9 +432,16 @@ function collisionSystem(world) {
         const col = coords.col + offset;
         const row = coords.row + offset;
         for (let k = 0; k < 4; k++) {
-            const neighbor = SpatialHashGrid.cells.get(
-                (col + CELL_NEIGHBOR_OFFSETS[k][0]) * 65536 + (row + CELL_NEIGHBOR_OFFSETS[k][1])
-            );
+            const nc = col + CELL_NEIGHBOR_OFFSETS[k][0];
+            const nr = row + CELL_NEIGHBOR_OFFSETS[k][1];
+            // ГРУБЫЙ УРОВЕНЬ: соседняя точная ячейка лежит в блоке 4×4; если весь
+            // блок пуст (ни одной сущности), точный Map.get пропускаем целиком.
+            if (useCoarse) {
+                const ci = (nc >> 2) - 8192 + 512; // nc/4 − KEY_OFFSET/4 + смещение массива
+                const ri = (nr >> 2) - 8192 + 512;
+                if (ci >= 0 && ci < 1024 && ri >= 0 && ri < 1024 && coarse[ci * 1024 + ri] === 0) continue;
+            }
+            const neighbor = SpatialHashGrid.cells.get(nc * 65536 + nr);
             if (!neighbor) continue;
             const m = neighbor.length;
             for (let i = 0; i < n; i++) {

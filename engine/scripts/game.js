@@ -2,19 +2,19 @@
 // Интеграционный тест всех модулей движка: мир больше экрана, управляемый
 // герой под камерой, здоровье и урон по таймеру, события, эффекты, звук, HUD,
 // пауза и отладочный оверлей. Каждый блок помечен, какой модуль проверяет.
-import { UNIT_CONFIGS, UNITS_EVENTS } from "./data/units.js";
-import { init } from "./engine/engine.js";
-import { createScheduler } from "./engine/modules/scheduler.js";
-import { createInput } from "./engine/modules/input.js";
-import { createHealth } from "./engine/modules/health.js";
-import { createCamera } from "./engine/modules/camera.js";
-import { createFX } from "./engine/modules/fx.js";
-import { createAudio } from "./engine/modules/audio.js";
-import { createAssets } from "./engine/modules/assets.js";
-import { createHUD } from "./engine/modules/hud.js";
-import { createScenes } from "./engine/modules/scenes.js";
-import { createDebug } from "./engine/modules/debug.js";
-import { rand } from "./engine/modules/math.js";
+import { UNIT_CONFIGS, UNITS_EVENTS } from "./data/units.js?v=2";
+import { init } from "./engine/engine.js?v=2";
+import { createScheduler } from "./engine/modules/scheduler.js?v=2";
+import { createInput } from "./engine/modules/input.js?v=2";
+import { createHealth } from "./engine/modules/health.js?v=2";
+import { createCamera } from "./engine/modules/camera.js?v=2";
+import { createFX } from "./engine/modules/fx.js?v=2";
+import { createAudio } from "./engine/modules/audio.js?v=2";
+import { createAssets } from "./engine/modules/assets.js?v=2";
+import { createHUD } from "./engine/modules/hud.js?v=2";
+import { createScenes } from "./engine/modules/scenes.js?v=2";
+import { createDebug } from "./engine/modules/debug.js?v=2";
+import { rand } from "./engine/modules/math.js?v=2";
 
 const engine = await init();
 const {
