@@ -104,8 +104,9 @@
         </div>
         <div class="panel">
             <h2>Файл</h2>
-            <input id="openName" value="mage_64.png" style="background:#0d0e11;border:1px solid #2a2e36;border-radius:4px;color:#cfd8e3;font-family:monospace;padding:6px;width:160px;">
-            <button id="open">Открыть (PNG+манифест)</button>
+            <button id="open">Открыть (выбор файла)</button>
+            <input type="file" id="fileInput" accept=".png,.json" multiple style="display:none">
+            <div style="font-size:10px;color:#7a8494;">выберите .png и рядом его .json</div>
             <h2>Размер</h2>
             <div class="tools">
                 <input id="sizeInput" type="number" value="64" min="8" max="256" step="8" style="background:#0d0e11;border:1px solid #2a2e36;border-radius:4px;color:#cfd8e3;font-family:monospace;padding:6px;width:70px;">
@@ -117,6 +118,6 @@
             <div id="status"></div>
         </div>
     </div>
-    <script src="./scripts/editor.js?v=6"></script>
+    <script src="./scripts/editor.js?v=7"></script>
 </body>
 </html>

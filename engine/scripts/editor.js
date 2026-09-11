@@ -375,40 +375,31 @@ const loadImage = (url) => new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error(`PNG не найден: ${url}`));
-    image.src = url + "?t=" + Date.now();
+    // Кэш-бастер только для http(s): blob:-URL query-строку не допускают
+    image.src = url.startsWith("blob:") ? url : url + "?t=" + Date.now();
 });
 
-async function openSheet(name) {
-    const base = name.replace(/\.png$/, "");
-    const response = await fetch(`images/sprites/${base}.json`, { cache: "no-store" });
-    if (!response.ok) throw new Error(`Манифест ${base}.json не найден`);
-    const manifest = await response.json();
-
-    const image = await loadImage(`images/sprites/${name}`);
+// Общий разбор: изображение спрайтшита + манифест → строки-анимации редактора
+function applySheet(image, manifest) {
     if (image.width !== manifest.size * manifest.columns ||
         image.height !== manifest.size * manifest.animations.length) {
         throw new Error(`Размер PNG ${image.width}×${image.height} не совпадает с манифестом`);
     }
-
-    // Читаем весь спрайтшит в пиксели один раз
     const reader = document.createElement("canvas");
     reader.width = image.width;
     reader.height = image.height;
     const rctx = reader.getContext("2d");
     rctx.drawImage(image, 0, 0);
     const pixels = rctx.getImageData(0, 0, image.width, image.height).data;
-
     const hexAt = (px, py) => {
         const o = (py * image.width + px) * 4;
         if (pixels[o + 3] < 128) return null; // прозрачный
         return "#" + [pixels[o], pixels[o + 1], pixels[o + 2]]
             .map(v => v.toString(16).padStart(2, "0")).join("");
     };
-
     size = manifest.size;
     document.getElementById("sizeInput").value = size;
     applyBoardSize();
-
     sheet = {
         rows: manifest.animations.map((a) => {
             const frames = [];
@@ -428,22 +419,59 @@ async function openSheet(name) {
     rowIndex = 0;
     current = 0;
     render();
-    return {
-        rows: sheet.rows.map(r => ({ name: r.name, frames: r.frames.length })),
-        size,
-    };
+    return { rows: sheet.rows.map(r => ({ name: r.name, frames: r.frames.length })), size };
 }
 
-document.getElementById("open").onclick = () => {
-    const name = document.getElementById("openName").value.trim();
-    __EDITOR.open(name).then(r => {
+async function openSheet(name) {
+    const base = name.replace(/\.png$/, "");
+    const response = await fetch(`images/sprites/${base}.json`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`Манифест ${base}.json не найден`);
+    const manifest = await response.json();
+    const image = await loadImage(`images/sprites/${name}`);
+    return applySheet(image, manifest);
+}
+
+// ОТКРЫТИЕ ЧЕРЕЗ СИСТЕМНЫЙ ДИАЛОГ: пользователь выбирает .png (и рядом .json).
+// Файлы читаются локально — сервер не нужен. Без .json пробуем взять манифест
+// с сервера (если файл лежит в images/sprites).
+async function openFromFiles(files) {
+    const list = [...files];
+    const pngFile = list.find(f => /\.png$/i.test(f.name));
+    if (!pngFile) throw new Error("Выберите файл .png");
+    const base = pngFile.name.replace(/\.png$/i, "");
+    const jsonFile = list.find(f => new RegExp("^" + base + "\.json$", "i").test(f.name))
+        || list.find(f => /\.json$/i.test(f.name));
+    let manifest;
+    if (jsonFile) {
+        manifest = JSON.parse(await jsonFile.text());
+    } else {
+        const response = await fetch(`images/sprites/${base}.json`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`Рядом с ${pngFile.name} выберите также ${base}.json`);
+        manifest = await response.json();
+    }
+    const url = URL.createObjectURL(pngFile);
+    try {
+        const image = await loadImage(url);
+        return applySheet(image, manifest);
+    } finally {
+        URL.revokeObjectURL(url);
+    }
+}
+
+// «Открыть» → системный диалог выбора файла (.png + рядом .json)
+const fileInput = document.getElementById("fileInput");
+document.getElementById("open").onclick = () => fileInput.click();
+fileInput.addEventListener("change", () => {
+    if (!fileInput.files.length) return;
+    __EDITOR.openFiles([...fileInput.files]).then(r => {
         document.getElementById("status").textContent = r
-            ? `Открыто: ${name} — ${r.rows.map(x => `${x.name}(${x.frames})`).join(", ")}`
+            ? `Открыто: ${r.rows.map(x => `${x.name}(${x.frames})`).join(", ")}, ${r.size}×${r.size}`
             : "Не открыто";
     }).catch(e => {
         document.getElementById("status").textContent = `Ошибка: ${e.message}`;
     });
-};
+    fileInput.value = ""; // чтобы повторный выбор того же файла тоже срабатывал
+});
 
 // ===== РАЗМЕР: UI =====
 document.getElementById("applySize").onclick = () => {
@@ -528,6 +556,7 @@ const __EDITOR = {
     // ---- экспорт / открытие ----
     export: (name) => exportSheet(name),
     open: (name) => openSheet(name.replace(/\.png$/, "") + ".png"),
+    openFiles: (files) => openFromFiles(files),
     // Кадры строками: символ → цвет палитры, '.' или ' ' → прозрачный.
     // spec.animations = { wait: [строки кадра...], death: [...] }; spec.size — размер холста.
     saveSpec: (spec) => {
