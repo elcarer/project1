@@ -102,6 +102,8 @@
             <div class="tools">
                 <button id="clearFrame">очистить кадр</button>
                 <button id="play">▶ проиграть</button>
+                <input id="fpsInput" type="number" value="8" min="1" max="60" title="скорость анимации, кадров/с (пишется в манифест)" style="background:#0d0e11;border:1px solid #2a2e36;border-radius:4px;color:#cfd8e3;font-family:monospace;padding:6px;width:56px;">
+                <span style="font-size:10px;color:#7a8494;">кадр/с</span>
             </div>
         </div>
         <div class="panel">
@@ -121,6 +123,10 @@
             <div id="status"></div>
         </div>
     </div>
-    <script src="./scripts/editor.js?v=8"></script>
+    <div style="text-align:center;">
+        <h1 style="margin-bottom:4px;">Спрайтшит целиком (клик по кадру — перейти к нему)</h1>
+        <canvas id="sheetPreview" style="border:1px solid #2a2e36; image-rendering: pixelated; max-width: 96vw; height: auto; cursor: pointer;"></canvas>
+    </div>
+    <script src="./scripts/editor.js?v=9"></script>
 </body>
 </html>

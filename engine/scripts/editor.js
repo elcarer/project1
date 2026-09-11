@@ -38,6 +38,7 @@ let bgColor = "#15171b";      // фон, на котором проигрыва�
 let tool = "pixel";           // pixel | fill | eraser | pick
 let playing = false;
 let playTimer = null;
+let fps = 8;                  // скорость проигрывания анимации → пишется в манифест
 
 const curRow = () => sheet.rows[rowIndex];
 const curFrames = () => curRow().frames;
@@ -68,6 +69,7 @@ function render() {
         line(0, i * zoom, canvas.width, i * zoom);
     }
     renderFramesStrip();
+    scheduleSheetPreview();
 }
 
 function line(x1, y1, x2, y2) {
@@ -273,8 +275,66 @@ function renderFramesStrip() {
     renderRowsStrip();
 }
 
-function newFrame(copyCurrent = true) {
-    const data = copyCurrent ? [...curFrames()[current]] : emptyFrame();
+// ===== ПРЕДПРОСМОТР ПОЛНОГО СПРАЙТШИТА (внизу страницы) =====
+// Вся сетка целиком: строка = анимация, колонка = кадр. Перестраивается с
+// debounce (перерисовка на каждый пиксель при рисовании слишком дорога).
+// Клик по ячейке → перейти к этой строке и кадру.
+const previewEl = document.getElementById("sheetPreview");
+const PV_CELL = 64, PV_HEAD = 16;
+let pvTimer = null;
+function scheduleSheetPreview() {
+    if (pvTimer) return;
+    pvTimer = setTimeout(() => { pvTimer = null; renderSheetPreview(); }, 150);
+}
+function renderSheetPreview() {
+    const cols = Math.max(...sheet.rows.map(r => r.frames.length));
+    previewEl.width = cols * PV_CELL;
+    previewEl.height = sheet.rows.length * (PV_CELL + PV_HEAD);
+    const p = previewEl.getContext("2d");
+    p.imageSmoothingEnabled = false;
+    p.fillStyle = "#101216";
+    p.fillRect(0, 0, previewEl.width, previewEl.height);
+    p.font = "11px monospace";
+    const scratch = document.createElement("canvas");
+    scratch.width = size; scratch.height = size;
+    const sctx = scratch.getContext("2d");
+    sheet.rows.forEach((row, ri) => {
+        const y0 = ri * (PV_CELL + PV_HEAD);
+        p.fillStyle = "#88ffcc";
+        p.fillText(row.name, 3, y0 + 12);
+        row.frames.forEach((frame, ci) => {
+            sctx.fillStyle = bgColor;
+            sctx.fillRect(0, 0, size, size);
+            for (let q = 0; q < frame.length; q++) {
+                if (!frame[q]) continue;
+                sctx.fillStyle = frame[q];
+                sctx.fillRect(q % size, Math.floor(q / size), 1, 1);
+            }
+            p.drawImage(scratch, 0, 0, size, size, ci * PV_CELL, y0 + PV_HEAD, PV_CELL, PV_CELL);
+        });
+    });
+    p.strokeStyle = "rgba(255,255,255,0.10)";
+    for (let c = 0; c <= cols; c++) { p.beginPath(); p.moveTo(c * PV_CELL + 0.5, 0); p.lineTo(c * PV_CELL + 0.5, previewEl.height); p.stroke(); }
+    for (let r = 0; r <= sheet.rows.length; r++) { const y0 = r * (PV_CELL + PV_HEAD) + 0.5; p.beginPath(); p.moveTo(0, y0); p.lineTo(previewEl.width, y0); p.stroke(); }
+    // подсветка текущей строки и кадра
+    p.strokeStyle = "#88ffcc";
+    p.strokeRect(current * PV_CELL + 0.5, rowIndex * (PV_CELL + PV_HEAD) + PV_HEAD + 0.5, PV_CELL - 1, PV_CELL - 1);
+}
+previewEl.addEventListener("click", (e) => {
+    const rect = previewEl.getBoundingClientRect();
+    const scale = previewEl.width / rect.width;
+    const px = (e.clientX - rect.left) * scale;
+    const py = (e.clientY - rect.top) * scale;
+    const ri = Math.floor(py / (PV_CELL + PV_HEAD));
+    const ci = Math.floor(px / PV_CELL);
+    if (ri < 0 || ri >= sheet.rows.length) return;
+    const row = sheet.rows[ri];
+    if (ci < 0 || ci >= row.frames.length) return;
+    rowIndex = ri; current = ci;
+    render();
+});
+
+function newFrame(copyCurrent = true) {    const data = copyCurrent ? [...curFrames()[current]] : emptyFrame();
     curFrames().splice(current + 1, 0, data);
     current++;
     render();
@@ -296,19 +356,31 @@ document.getElementById("clearFrame").onclick = () => {
 
 // ===== ПРОИГРЫВАНИЕ ТЕКУЩЕЙ СТРОКИ =====
 const playBtn = document.getElementById("play");
+const fpsInput = document.getElementById("fpsInput");
+
+function applyFps(v) {
+    fps = Math.max(1, Math.min(60, Math.round(v) || 8));
+    fpsInput.value = fps;
+    if (playing) { // перезапуск таймера с новым интервалом
+        clearInterval(playTimer);
+        startPlayback();
+    }
+}
+function startPlayback() {
+    let idx = 0;
+    playTimer = setInterval(() => {
+        idx = (idx + 1) % curFrames().length;
+        current = idx;
+        render();
+    }, Math.round(1000 / fps));
+}
+fpsInput.onchange = () => applyFps(parseInt(fpsInput.value, 10));
+
 playBtn.onclick = () => {
     playing = !playing;
     playBtn.classList.toggle("active", playing);
-    if (playing) {
-        let idx = 0;
-        playTimer = setInterval(() => {
-            idx = (idx + 1) % curFrames().length;
-            current = idx;
-            render();
-        }, 150);
-    } else {
-        clearInterval(playTimer);
-    }
+    if (playing) startPlayback();
+    else clearInterval(playTimer);
 };
 
 // ===== ЭКСПОРТ: СЕТКА (строки=анимации, колонки=кадры) + JSON-манифест =====
@@ -373,6 +445,7 @@ async function exportSheet(name, { download = false } = {}) {
     const manifest = {
         size,
         columns,
+        fps, // скорость анимации: редактор проигрывает с ней, игра берёт fps/60 как animationSpeed
         animations: sheet.rows.map((row, i) => ({ name: row.name, row: i, frames: row.frames.length })),
     };
     const jsonText = JSON.stringify(manifest, null, 2);
@@ -420,6 +493,7 @@ function applySheet(image, manifest) {
     size = manifest.size;
     document.getElementById("sizeInput").value = size;
     applyBoardSize();
+    if (manifest.fps) applyFps(manifest.fps); // скорость из манифеста
     sheet = {
         rows: manifest.animations.map((a) => {
             const frames = [];
@@ -589,6 +663,8 @@ const __EDITOR = {
     export: (name, opts) => exportSheet(name, opts),
     open: (name) => openSheet(name.replace(/\.png$/, "") + ".png"),
     openFiles: (files) => openFromFiles(files),
+    // ---- скорость анимации (кадров/с, попадает в манифест) ----
+    fps: (v) => { if (v !== undefined) applyFps(v); return fps; },
     // Кадры строками: символ → цвет палитры, '.' или ' ' → прозрачный.
     // spec.animations = { wait: [строки кадра...], death: [...] }; spec.size — размер холста.
     saveSpec: (spec) => {

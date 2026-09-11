@@ -60,9 +60,11 @@ function createAssets() {
 
     // ПЕРСОНАЖ из формата пиксельного редактора: <base>.png — сетка
     // (строка = анимация, колонка = кадр) + <base>.json — манифест
-    // {size, columns, animations:[{name,row,frames}]}.
-    // Возвращает { size, columns, animations: { wait: [текстуры], death: [...] } } —
+    // {size, columns, fps, animations:[{name,row,frames}]}.
+    // Возвращает { size, columns, fps, animationSpeed, animations: {...} } —
     // массивы готовы для AnimatedSprite (конфиг юнита: textures: anim.wait).
+    // animationSpeed = fps/60 — готово для sprite.animationSpeed (у PixiJS
+    // скорость 1 = 60 кадров/с).
     async function loadCharacter(pngUrl) {
         const base = pngUrl.replace(/\.png$/, "");
         let manifest = cache.get(`${base}#manifest`);
@@ -77,7 +79,14 @@ function createAssets() {
         for (const a of manifest.animations) {
             animations[a.name] = all.slice(a.row * manifest.columns, a.row * manifest.columns + a.frames);
         }
-        return { size: manifest.size, columns: manifest.columns, animations };
+        const fps = manifest.fps ?? null;
+        return {
+            size: manifest.size,
+            columns: manifest.columns,
+            fps,
+            animationSpeed: fps ? fps / 60 : null,
+            animations,
+        };
     }
 
     return {

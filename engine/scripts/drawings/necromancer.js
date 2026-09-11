@@ -201,7 +201,12 @@ function run(E) {
     }
 
     // ===== ФИГУРЫ =====
+    // o.behind — рисуется ДО тела (эффекты удара «по ту сторону»: их частично
+    // перекрывает фигура), o.front — ПОСЛЕ обводки (эффекты поверх).
+    // ВАЖНО: flipX() вызывается только на уровне КАДРА, после всех эффектов —
+    // иначе персонаж отражается, а эффект остаётся на старой стороне.
     function figureFront(b, o = {}) {
+        if (o.behind) o.behind();
         const sway = o.sway || 0;
         hoodFront(b, o.tiltH || 0);
         hairFront(b);
@@ -219,9 +224,11 @@ function run(E) {
             orbSkull(gx + 2 + (o.tiltT || 0), 17 + b, o.dead);
         }
         outlineAll();
+        if (o.front) o.front();
         if (!o.noStaff) orbGlow(gx + 2 + (o.tiltT || 0), 17 + b, o.glow ?? 1);
     }
     function figureBack(b, o = {}) {
+        if (o.behind) o.behind();
         const sway = o.sway || 0;
         hoodFront(b, 0);                         // тот же купол
         R(57, 12 + b, 2, 20, ROBE_D);            // шов
@@ -251,9 +258,11 @@ function run(E) {
             orbSkull(gx + 2 + (o.tiltT || 0), 17 + b, o.dead);
         }
         outlineAll();
+        if (o.front) o.front();
         if (!o.noStaff) orbGlow(gx + 2 + (o.tiltT || 0), 17 + b, o.glow ?? 1);
     }
-    function figureSide(b, o = {}, flip = false) {
+    function figureSide(b, o = {}) {
+        if (o.behind) o.behind();
         ell(56, 24 + b, 15, 13, ROBE);           // капюшон
         bez(52, 12 + b, 42, 14 + b, 37, 22 + b, ROBE, 4);   // хвост назад
         bez(56, 11 + b, 58, 6 + b, 62, 5 + b, ROBE, 3);     // остриё
@@ -288,8 +297,8 @@ function run(E) {
             orbSkull(sx, 17 + b, o.dead);
         }
         outlineAll();
+        if (o.front) o.front();
         if (!o.noStaff) orbGlow(sx, 17 + b, o.glow ?? 1);
-        if (flip) E.flipX();
     }
     const flash = () => {                        // вспышка урона — ПОСЛЕ обводки
         R(52, 54, 1, 22, GRN_XL); R(60, 58, 1, 26, GRN_L); R(68, 52, 1, 20, GRN_XL);
@@ -306,7 +315,8 @@ function run(E) {
         figureBack(B4[p], { sway: SW4[p], tiltT: SW4[p] * 2 });
     }
     function frameWalkSide(p, flip) {
-        figureSide(B4[p], {}, flip);
+        figureSide(B4[p], {});
+        if (flip) E.flipX(); // отражение — всегда последняя операция кадра
     }
     function frameAttackFront(p) {
         if (p === 0) {                           // замах: левая рука к шару, шар разгорается
@@ -337,42 +347,62 @@ function run(E) {
     function frameAttackBack(p) {
         if (p === 0) {                           // шар разгорается
             figureBack(0, { glow: 2 });
-        } else if (p === 1) {                    // посох уходит вверх-влево
-            figureBack(0, { sway: -2, glow: 0, noStaff: true });
-            staffShaft(88, 76, 62, 12);
-            wrap(80, 62); wrap(70, 46);
-            outlineAll(); orbSkull(60, 11); orbGlow(60, 11, 3);
-        } else if (p === 2) {                    // удар в землю
-            figureBack(1, { sway: -4, glow: 0, noStaff: true });
-            staffShaft(86, 80, 50, 102);
-            wrap(82, 78);
-            outlineAll();
-            orbSkull(48, 104); orbGlow(48, 104, 3);
-            bez(64, 14, 36, 44, 46, 96, GRN_L, 2);
-            dither(40, 96, 14, 12, GRN_L);
+        } else if (p === 1) {                    // посох уходит вверх-влево (над фигурой)
+            figureBack(0, {
+                sway: -2, glow: 0, noStaff: true,
+                front: () => {                   // посох поднят над головой — поверх
+                    staffShaft(88, 76, 62, 12);
+                    wrap(80, 62); wrap(70, 46);
+                    orbSkull(60, 11);
+                },
+            });
+            orbGlow(60, 11, 3);
+        } else if (p === 2) {                    // удар ВПЕРЕДИ фигуры → ВСЁ за спиной:
+            figureBack(1, {                      // посох, дуга, всплеск и свечение — ДО
+                sway: -4, glow: 0, noStaff: true,
+                behind: () => {                  // тела: видны только края в воздухе
+                    staffShaft(86, 80, 50, 102);
+                    orbSkull(48, 104);
+                    bez(64, 14, 36, 44, 44, 90, GRN_L, 2);  // след дуги (перекрыт телом)
+                    dither(40, 96, 14, 12, GRN_L);
+                    orbGlow(48, 104, 2);
+                },
+                front: () => { wrap(82, 78); },  // кисть на древке — сбоку, поверх
+            });
         } else {                                 // возврат
             figureBack(0, { glow: 1 });
             P(48, 74, GRN_L); P(54, 84, GRN_XL); P(46, 90, GRN);
         }
     }
     function frameAttackSide(p, flip) {
+        // Вся сцена строится «вправо», отражение — последним шагом.
         if (p === 0) {
-            figureSide(0, { glow: 2 }, flip);
+            figureSide(0, { glow: 2 });
         } else if (p === 1) {                    // посох отклонён назад-вверх
-            figureSide(0, { glow: 0, noStaff: true }, flip);
-            staffShaft(78, 80, 90, 12); wrap(80, 74);
-            outlineAll(); orbSkull(91, 11); orbGlow(91, 11, 3);
+            figureSide(0, {
+                glow: 0, noStaff: true,
+                front: () => {
+                    staffShaft(78, 80, 90, 12); wrap(80, 74);
+                    orbSkull(91, 11);
+                },
+            });
+            orbGlow(91, 11, 3);
         } else if (p === 2) {                    // рубящий вперёд
-            figureSide(1, { glow: 0, noStaff: true }, flip);
-            staffShaft(80, 78, 106, 96); wrap(82, 76);
-            outlineAll();
-            orbSkull(108, 98); orbGlow(108, 98, 3);
-            bez(92, 14, 114, 48, 108, 92, GRN_L, 2);
-            dither(104, 92, 12, 12, GRN_L);
+            figureSide(1, {
+                glow: 0, noStaff: true,
+                front: () => {
+                    staffShaft(80, 78, 106, 96); wrap(82, 76);
+                    orbSkull(108, 98);
+                    bez(92, 14, 114, 48, 108, 92, GRN_L, 2);
+                    dither(104, 92, 12, 12, GRN_L);
+                },
+            });
+            orbGlow(108, 98, 3);
         } else {
-            figureSide(0, { glow: 1 }, flip);
+            figureSide(0, { glow: 1 });
             P(100, 70, GRN_L); P(104, 82, GRN_XL); P(98, 88, GRN);
         }
+        if (flip) E.flipX(); // эффекты отражаются вместе с персонажем
     }
     function frameWait(p) {
         figureFront(B4[p], { glow: p % 2 ? 1 : 2 });
