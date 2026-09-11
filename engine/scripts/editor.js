@@ -122,6 +122,10 @@ function canvasPos(event) {
 
 let painting = false;
 let lastPixel = null;
+// Батч-режим: подавляет перерисовку доски на каждый примитив (рисование
+// больших спрайтов кодом в разы быстрее); render() вызывается один раз в конце
+let silentMode = false;
+function maybeRender() { if (!silentMode) render(); }
 canvas.addEventListener("pointerdown", (event) => {
     const { x, y } = canvasPos(event);
     if (tool === "pick") { pickColor(x, y); return; }
@@ -451,18 +455,18 @@ document.getElementById("applySize").onclick = () => {
 
 // ===== API ДЛЯ АВТОМАТИЗАЦИИ (агент/консоль) =====
 const __EDITOR = {
-    px: (x, y, c) => { setPixel(x, y, c); render(); return true; },
+    px: (x, y, c) => { setPixel(x, y, c); maybeRender(); return true; },
     get: (x, y) => getPixel(x, y),
     rect: (x, y, w, h, c) => {
         for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) setPixel(x + dx, y + dy, c);
-        render(); return true;
+        maybeRender(); return true;
     },
     mirror: () => {
         const f = curFrames()[current];
         for (let y = 0; y < size; y++) for (let x = 0; x < size / 2; x++) {
             f[y * size + (size - 1 - x)] = f[y * size + x];
         }
-        render(); return true;
+        maybeRender(); return true;
     },
     // Полное зеркалирование кадра (вид слева ↔ вид справа)
     flipX: () => {
@@ -474,7 +478,7 @@ const __EDITOR = {
             f[y * size + x] = f[y * size + b];
             f[y * size + b] = a;
         }
-        render(); return true;
+        maybeRender(); return true;
     },
     resize: (n) => resize(n),
     size: () => size,
@@ -518,7 +522,9 @@ const __EDITOR = {
     },
     setFrame: (i) => { current = Math.max(0, Math.min(i, curFrames().length - 1)); render(); return current; },
     frameCount: () => curFrames().length,
-    clear: () => { curFrames()[current] = emptyFrame(); render(); return true; },
+    clear: () => { curFrames()[current] = emptyFrame(); maybeRender(); return true; },
+    // Батч-рисование: примитивы внутри fn не перерисовывают доску
+    silent: (fn) => { silentMode = true; try { fn(); } finally { silentMode = false; render(); } },
     // ---- экспорт / открытие ----
     export: (name) => exportSheet(name),
     open: (name) => openSheet(name.replace(/\.png$/, "") + ".png"),
