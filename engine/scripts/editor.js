@@ -327,7 +327,17 @@ async function saveFile(name, dataURL) {
     return response.json();
 }
 
-async function exportSheet(name) {
+// Скачивание файла браузером — сохранение без сервера (работает и на file://)
+function triggerDownload(url, filename) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+}
+
+async function exportSheet(name, { download = false } = {}) {
     // Выравниваем строки по максимальному числу колонок: недостающие кадры
     // заполняются повтором последнего (анимация зацикливается без дыр)
     const columns = Math.max(...sheet.rows.map(r => r.frames.length));
@@ -356,17 +366,24 @@ async function exportSheet(name) {
         }
     });
 
-    const pngResult = await saveFile(name, sheetCanvas.toDataURL("image/png"));
-    if (!pngResult.saved) return { ok: false, error: pngResult.error || "save failed" };
-
     const base = name.replace(/\.png$/, "");
     const manifest = {
         size,
         columns,
         animations: sheet.rows.map((row, i) => ({ name: row.name, row: i, frames: row.frames.length })),
     };
-    await saveFile(`${base}.json`, "data:application/json;base64," + btoa(unescape(encodeURIComponent(JSON.stringify(manifest, null, 2)))));
+    const jsonText = JSON.stringify(manifest, null, 2);
+    const jsonDataUrl = "data:application/json;base64," + btoa(unescape(encodeURIComponent(jsonText)));
 
+    if (download) {
+        triggerDownload(sheetCanvas.toDataURL("image/png"), name);
+        triggerDownload(jsonDataUrl, `${base}.json`);
+        return { ok: true, downloaded: [name, `${base}.json`], columns, rows: sheet.rows.length };
+    }
+
+    const pngResult = await saveFile(name, sheetCanvas.toDataURL("image/png"));
+    if (!pngResult.saved) return { ok: false, error: pngResult.error || "save failed" };
+    await saveFile(`${base}.json`, jsonDataUrl);
     return { ok: true, saved: pngResult.saved, files: [name, `${base}.json`], columns, rows: sheet.rows.length };
 }
 
@@ -473,6 +490,16 @@ fileInput.addEventListener("change", () => {
     fileInput.value = ""; // чтобы повторный выбор того же файла тоже срабатывал
 });
 
+// Скачивание: файлы сохраняются браузером, сервер не нужен
+document.getElementById("download").onclick = () => {
+    const name = document.getElementById("name").value.trim() || "sprite.png";
+    __EDITOR.export(name, { download: true }).then(r => {
+        document.getElementById("status").textContent = r.ok
+            ? `Скачано: ${r.downloaded.join(", ")} (${r.columns} колонок × ${r.rows} строк)`
+            : `Ошибка: ${r.error}`;
+    });
+};
+
 // ===== РАЗМЕР: UI =====
 document.getElementById("applySize").onclick = () => {
     const before = size;
@@ -554,7 +581,7 @@ const __EDITOR = {
     // Батч-рисование: примитивы внутри fn не перерисовывают доску
     silent: (fn) => { silentMode = true; try { fn(); } finally { silentMode = false; render(); } },
     // ---- экспорт / открытие ----
-    export: (name) => exportSheet(name),
+    export: (name, opts) => exportSheet(name, opts),
     open: (name) => openSheet(name.replace(/\.png$/, "") + ".png"),
     openFiles: (files) => openFromFiles(files),
     // Кадры строками: символ → цвет палитры, '.' или ' ' → прозрачный.
