@@ -260,6 +260,12 @@ const mage = await assets.loadCharacter("images/sprites/mage_64.png");
 (формат манифеста: `{size, columns, animations:[{name,row,frames}]}` — при желании
 доступен напрямую через `assets.get("<путь>#manifest")`).
 
+**Готовые персонажи** (`images/sprites/` + код рисования в `scripts/drawings/`):
+mage_64 (wait+death), elf_64 (4 walk), warrior_128 и necromancer_128 — стандартный
+набор (4 walk + 4 attack + wait + death + damage, 43 кадра). Некромант рисуется
+кривыми и эллипсами с автообводкой силуэта 1 px — сборка кадров идемпотентна
+(повторный запуск рисователя не плодит дубли кадров).
+
 API автоматизации — `window.__EDITOR` (консоль/агент):
 
 ```js
