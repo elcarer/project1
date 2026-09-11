@@ -103,12 +103,20 @@
             </div>
         </div>
         <div class="panel">
+            <h2>Файл</h2>
+            <input id="openName" value="mage_64.png" style="background:#0d0e11;border:1px solid #2a2e36;border-radius:4px;color:#cfd8e3;font-family:monospace;padding:6px;width:160px;">
+            <button id="open">Открыть (PNG+манифест)</button>
+            <h2>Размер</h2>
+            <div class="tools">
+                <input id="sizeInput" type="number" value="64" min="8" max="256" step="8" style="background:#0d0e11;border:1px solid #2a2e36;border-radius:4px;color:#cfd8e3;font-family:monospace;padding:6px;width:70px;">
+                <button id="applySize">Применить</button>
+            </div>
             <h2>Экспорт</h2>
             <input id="name" value="knight_64.png">
             <button id="export">Сохранить спрайтшит</button>
             <div id="status"></div>
         </div>
     </div>
-    <script src="./scripts/editor.js?v=3"></script>
+    <script src="./scripts/editor.js?v=4"></script>
 </body>
 </html>
