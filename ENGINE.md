@@ -261,16 +261,20 @@ API автоматизации — `window.__EDITOR` (консоль/агент)
 ```js
 E.px(x, y, "#ff0000");      E.rect(x, y, w, h, c);
 E.mirror();                 // левая половина → правая
+E.flipX();                  // полное зеркалирование кадра (вид слева ↔ справа)
 E.resize(128); E.size();    // размер холста (8..256, содержимое центрируется)
 E.addRow("death");          E.setRow("wait");   E.rows();
+E.renameRow("wait", "walk_front");
+E.frameData(row, i);        E.setFrameData(row, i, массив); // пиксели кадра
 E.newFrame(); E.deleteFrame(i); E.setFrame(i); E.frameCount(); E.clear();
 await E.open("mage_64.png");     // открыть PNG+манифест → кадры и анимации
 await E.export("mage_64.png");   // mage_64.png + mage_64.json
 ```
 
-Референсы: `knight_64.png` (рыцарь, 4 кадра wait, горизонтальная лента — старый
-формат), `mage_64.png` + `mage_64.json` (маг: wait 4 кадра + death 5 кадров,
-формат сетки 5×2 — актуальный).
+Референсы: `elf_64.png` + `.json` (эльф-друид с посохом по референсу: 4 walk-анимации
+по направлениям walk_front/back/left/right × 4 кадра — актуальный формат сетки 4×4),
+`mage_64.png` + `mage_64.json` (маг: wait 4 + death 5, сетка 5×2),
+`knight_64.png` (рыцарь, горизонтальная лента — старый формат).
 
 ## Отладка
 

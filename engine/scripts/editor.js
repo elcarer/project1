@@ -464,6 +464,18 @@ const __EDITOR = {
         }
         render(); return true;
     },
+    // Полное зеркалирование кадра (вид слева ↔ вид справа)
+    flipX: () => {
+        const f = curFrames()[current];
+        const half = Math.floor(size / 2);
+        for (let y = 0; y < size; y++) for (let x = 0; x < half; x++) {
+            const a = f[y * size + x];
+            const b = size - 1 - x;
+            f[y * size + x] = f[y * size + b];
+            f[y * size + b] = a;
+        }
+        render(); return true;
+    },
     resize: (n) => resize(n),
     size: () => size,
     // ---- строки-анимации ----
@@ -476,6 +488,24 @@ const __EDITOR = {
     },
     rows: () => sheet.rows.map(r => ({ name: r.name, frames: r.frames.length })),
     currentRow: () => curRow().name,
+    renameRow: (oldName, newName) => {
+        const row = sheet.rows.find(r => r.name === oldName);
+        if (!row || sheet.rows.some(r => r.name === newName)) return false;
+        row.name = newName;
+        render(); return true;
+    },
+    // Прямой доступ к массиву пикселей кадра (чтение/замена) — для копирования
+    // кадров между строками и программных трансформаций
+    frameData: (row, i) => {
+        const r = typeof row === "number" ? sheet.rows[row] : sheet.rows.find(x => x.name === row);
+        return r && r.frames[i] ? r.frames[i] : null;
+    },
+    setFrameData: (row, i, data) => {
+        const r = typeof row === "number" ? sheet.rows[row] : sheet.rows.find(x => x.name === row);
+        if (!r || !r.frames[i]) return false;
+        r.frames[i] = data;
+        render(); return true;
+    },
     // ---- кадры текущей строки ----
     newFrame: () => { newFrame(true); return curFrames().length; },
     deleteFrame: (i = current) => {
