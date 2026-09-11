@@ -34,6 +34,7 @@ let sheet = { rows: [{ name: "wait", frames: [emptyFrame()] }] };
 let rowIndex = 0;             // текущая строка-анимация
 let current = 0;              // текущий кадр внутри строки
 let color = "#9aa7b5";
+let bgColor = "#15171b";      // фон, на котором проигрывается анимация (только превью)
 let tool = "pixel";           // pixel | fill | eraser | pick
 let playing = false;
 let playTimer = null;
@@ -43,7 +44,7 @@ const curFrames = () => curRow().frames;
 
 // ===== ОТРИСОВКА ДОСКИ =====
 function render() {
-    ctx.fillStyle = "#15171b";
+    ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     const frame = curFrames()[current] || curFrames()[0];
     for (let y = 0; y < size; y++) {
@@ -210,6 +211,8 @@ function syncSwatches() {
     });
 }
 colorInput.addEventListener("input", () => { color = colorInput.value; syncSwatches(); });
+const bgInput = document.getElementById("bgInput");
+bgInput.addEventListener("input", () => { bgColor = bgInput.value; render(); });
 
 for (const btn of document.querySelectorAll("[data-tool]")) {
     btn.onclick = () => {
@@ -257,7 +260,7 @@ function renderFramesStrip() {
         thumb.width = size; thumb.height = size;
         thumb.className = "thumb" + (i === current ? " active" : "");
         const tctx = thumb.getContext("2d");
-        tctx.fillStyle = "#15171b";
+        tctx.fillStyle = bgColor;
         tctx.fillRect(0, 0, size, size);
         for (let p = 0; p < frame.length; p++) {
             if (!frame[p]) continue;
@@ -537,6 +540,8 @@ const __EDITOR = {
     },
     resize: (n) => resize(n),
     size: () => size,
+    setBg: (c) => { bgColor = c; bgInput.value = c; render(); return bgColor; },
+    bg: () => bgColor,
     // ---- строки-анимации ----
     addRow: (name) => addRow(name || `anim${sheet.rows.length + 1}`),
     setRow: (ref) => {

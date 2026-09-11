@@ -166,12 +166,12 @@ function run(E) {
         torsoFront(bob);
         helmetFront(bob);
         faceFront(bob, true);
-        // красная вспышка попадания
-        for (let i = 0; i < 26; i++) {
-            const x = 46 + ((i * 37) % 36), y = 58 + ((i * 13) % 26);
+        // красная вспышка попадания — по кирасе, лицо не трогаем
+        for (let i = 0; i < 30; i++) {
+            const x = 46 + ((i * 37) % 36), y = 60 + ((i * 13) % 24);
             P(x + lean, y + bob, CAPE);
         }
-        R(48 + lean, 40 + bob, 32, 8, CAPE);  // заливка ударившей волной
+        R(50 + lean, 60 + bob, 28, 3, CAPE);  // засветка верхней кромки кирасы
         swordDown(bob);
         shieldFront();
     }
@@ -205,7 +205,8 @@ function run(E) {
         // финал: лежит, шлем отдельно, щит плашмя, меч воткнут
         R(34, 104, 62, 20, A);
         R(34, 104, 62, 5, A_L);
-        R(34, 100, 62, 6, CAPE);
+        R(36, 100, 22, 5, CAPE_D);           // сложенный край плаща в углу
+        R(40, 100, 14, 2, CAPE);
         R(30, 116, 70, 6, K);
         // шлем валяется слева
         R(12, 108, 24, 12, A);
@@ -242,17 +243,19 @@ function run(E) {
         E.rect(48, 106 + dyA, 13, 8, A);
         E.rect(67, 106 + dyB, 13, 8, A);
         R(46, 114 + dyA, 15, 9, LEA_D); R(67, 114 + dyB, 15, 9, LEA_D);
-        // руки-посох... меч слева
+        // меч слева, кисть на рукояти
         R(24, 80 + bob, 8, 30, BLADE);
         R(25, 80 + bob, 2, 30, "#ffffff");
         R(20, 76 + bob, 16, 5, GOLD);
+        R(24, 69 + bob, 7, 6, SKIN);         // кисть над гардой
+        R(20, 64 + bob, 8, 5, LEA);          // рукав
     }
     // attack_back — как front (меч и плащ видны), лицо не важно
     function frameAttackBack(p) {
         frameWalkBack(1);
-        if (p === 0) { R(20, 20, 8, 60, BLADE); R(21, 20, 2, 60, "#ffffff"); R(14, 76, 20, 6, GOLD); }
-        if (p === 1) { LN(24, 30, 64, 88, BLADE, 7); }
-        if (p === 2) { LN(12, 110, 74, 88, BLADE, 7); }
+        if (p === 0) { R(20, 20, 8, 60, BLADE); R(21, 20, 2, 60, "#ffffff"); R(14, 76, 20, 6, GOLD); R(22, 68, 8, 6, SKIN); }
+        if (p === 1) { LN(24, 30, 64, 88, BLADE, 7); R(58, 80, 8, 6, SKIN); }
+        if (p === 2) { LN(12, 110, 74, 88, BLADE, 7); R(70, 82, 8, 6, SKIN); }
     }
 
     // ============ ВИД СБОКУ (лицом вправо) ============
@@ -280,6 +283,7 @@ function run(E) {
         R(78, 36 + bob, 10, 8, A);
         R(80, 38 + bob, 8, 12, SKIN);        // лицо в профиль
         R(84, 42 + bob, 3, 3, EYE);
+        R(58, 44 + bob, 22, 10, A_D);        // горжет (шея)
         // рога: передний и задний
         R(74, 4 + bob, 12, 8, HORN); R(84, 0 + bob, 10, 8, HORN);
         R(50, 6 + bob, 10, 8, HORN); R(46, 2 + bob, 8, 6, HORN);
@@ -312,6 +316,7 @@ function run(E) {
         R(78, 36 + bob, 10, 8, A);
         R(80, 38 + bob, 8, 12, SKIN);
         R(84, 42 + bob, 3, 3, EYE);
+        R(58, 44 + bob, 22, 10, A_D);
         R(74, 4 + bob, 12, 8, HORN); R(84, 0 + bob, 10, 8, HORN);
         R(50, 6 + bob, 10, 8, HORN); R(46, 2 + bob, 8, 6, HORN);
         R(50, 52 + bob, 22, 16, A); R(52, 52 + bob, 18, 4, A_L);
@@ -348,6 +353,7 @@ function run(E) {
             const count = frameCounts[name] ?? frameCounts.default;
             for (let p = 0; p < count; p++) {
                 E.setFrame(p);
+                E.clear();          // БЕЗ этого фазы рисуются поверх предыдущих — призраки
                 draw(p);
                 if (p < count - 1) E.newFrame();
             }
