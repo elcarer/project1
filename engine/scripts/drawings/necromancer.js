@@ -136,8 +136,9 @@ function run(E) {
         bez(66 + sway, 56 + b, 69 + sway, 70 + b, 66 + sway, 86 + b, ROBE_D, 1);
         ribBone(58 + sway, 62 + b, 8); ribBone(58 + sway, 70 + b, 10); ribBone(58 + sway, 78 + b, 8);
     }
-    function beltFront(b, sway = 0) {
+    function beltFront(b, sway = 0, buckle = true) {
         R(45 + sway, 84 + b, 26, 4, ROBE_D);
+        if (!buckle) return;                     // со спины пряжки не видно
         ell(58 + sway, 87 + b, 4, 3, BONE);      // череп-пряжка
         P(56 + sway, 86 + b, K); P(60 + sway, 86 + b, K); P(58 + sway, 89 + b, BONE_D);
     }
@@ -360,15 +361,14 @@ function run(E) {
         } else if (p === 2) {                    // удар ВПЕРЕДИ фигуры → ВСЁ за спиной:
             figureBack(1, {                      // посох, дуга, всплеск и свечение — ДО
                 sway: -4, glow: 0, noStaff: true,
-                behind: () => {                  // тела: видны только края в воздухе
-                    staffShaft(86, 80, 50, 102);
-                    orbSkull(48, 104);
+                behind: () => {                  // тела: посох короче силуэта, видны
+                    staffShaft(78, 96, 52, 104); // только края свечения по контуру
+                    orbSkull(50, 106);
                     bez(64, 14, 36, 44, 44, 90, GRN_L, 2);  // след дуги (перекрыт телом)
                     dither(40, 96, 14, 12, GRN_L);
-                    orbGlow(48, 104, 2);
+                    orbGlow(50, 106, 2);
                 },
-                front: () => { wrap(82, 78); },  // кисть на древке — сбоку, поверх
-            });
+            });                                  // кистей не видно — руки за телом
         } else {                                 // возврат
             figureBack(0, { glow: 1 });
             P(48, 74, GRN_L); P(54, 84, GRN_XL); P(46, 90, GRN);

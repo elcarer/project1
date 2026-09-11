@@ -182,9 +182,10 @@ function run(E) {
         R(50 + sway, 74 + b, 6, 1, SKIN_D); R(60 + sway, 74 + b, 6, 1, SKIN_D);
         R(50 + sway, 80 + b, 6, 1, SKIN_D); R(60 + sway, 80 + b, 6, 1, SKIN_D);
     }
-    function beltFront(b, sway = 0) {
+    function beltFront(b, sway = 0, buckle = true) {
         R(42 + sway, 84 + b, 32, 6, LEA);
         R(42 + sway, 88 + b, 32, 2, LEA_D);
+        if (!buckle) return;                     // пряжка спереди — со спины не видна
         R(55 + sway, 84 + b, 7, 6, STEEL_D); R(56 + sway, 85 + b, 5, 4, STEEL); // пряжка
         for (let x = 46 + sway; x <= 70 + sway; x += 6) P(x, 86 + b, LEA_D);    // дырки
     }
@@ -265,7 +266,7 @@ function run(E) {
     function figureFront(b, o = {}) {
         if (o.behind) o.behind();
         const sway = o.sway || 0;
-        shadow(58, 123 + Math.max(b, 0), 30, 5);
+        shadow(58, 123, 30, 5); // тень стоит на земле — не двигается с телом
         legsFront(b, o.dyL || 0, o.dyR || 0);
         torsoFront(b, sway);
         beltFront(b, sway);
@@ -280,15 +281,17 @@ function run(E) {
             armFront(34, 58, 40, 82, 44, 66, b);      // левая к верхней рукояти
             armFront(82, 58, 76, 84, 50, 80, b);      // правая к нижней
             fist(48, 64, b); fist(48, 78, b);
-            axeHead(47, 24 + b, 0, -1, -1);           // лезвие влево от лица
         }
+        if (!o.noAxe) axeHead(47, 24 + b, 0, -1, -1); // лезвие влево от лица —
+        // ВАЖНО: гейт именно noAxe (раньше был noArms — в death рисовалось
+        // фантомное «второе лезвие» рядом с упавшим топором)
         outlineAll();
         if (o.front) o.front();
     }
     function figureBack(b, o = {}) {
         if (o.behind) o.behind();
         const sway = o.sway || 0;
-        shadow(58, 123 + Math.max(b, 0), 30, 5);
+        shadow(58, 123, 30, 5); // тень стоит на земле — не двигается с телом
         legsFront(b, o.dyL || 0, o.dyR || 0);
         for (let y = 52; y <= 88; y++) {          // спина
             const t = (y - 52) / 36;
@@ -300,7 +303,7 @@ function run(E) {
         R(57 + sway, 58 + b, 2, 24, SKIN_D);      // позвоночник
         bez(46 + sway, 60 + b, 52 + sway, 68 + b, 46 + sway, 74 + b, SKIN_D, 1);  // мышцы спины
         bez(70 + sway, 60 + b, 64 + sway, 68 + b, 70 + sway, 74 + b, SKIN_D, 1);
-        beltFront(b, sway);
+        beltFront(b, sway, false);                // пряжка спереди — со спины не видна
         ell(80, 56 + b, 11, 8, FUR);              // меховое наплечье справа
         bez(70, 58 + b, 80, 64 + b, 90, 58 + b, FUR_D, 1);
         bez(71, 52 + b, 80, 47 + b, 89, 52 + b, FUR_L, 1);
@@ -326,7 +329,7 @@ function run(E) {
     }
     function figureSide(b, o = {}) {
         if (o.behind) o.behind();
-        shadow(58, 123 + Math.max(b, 0), 28, 5);
+        shadow(58, 123, 28, 5); // тень стоит на земле
         // ноги шагом: передняя и задняя
         const stride = o.stride || 0;
         R(50, 88 + b, 11, 16, PANT); R(60 + stride, 88 + b, 11, 16, PANT);
@@ -463,18 +466,13 @@ function run(E) {
                     fist(60, 52, 1);
                 },
             });
-        } else if (p === 2) {                    // удар ПОЗАДИ фигуры → эффект ДО тела
+        } else if (p === 2) {                    // удар ПОЗАДИ фигуры: топор скрыт телом
             figureBack(3, {
                 noAxe: true, noArms: true, dyL: 1, dyR: 1,
-                behind: () => {                  // топор, пыль и след дуги за спиной —
-                    shaftLine(57, 44, 57, 112);  // фигура перекрывает; видны края в воздухе
-                    axeHead(57, 114, 0, 1, 1);
-                    bez(44, 20, 70, 30, 74, 60, STEEL_L, 1);
-                    impact(57, 116, 1);
-                },
-                pose: () => {
-                    bez(80, 58, 78, 62, 66, 62, SKIN, 5);   // руки вниз к древку
-                    fist(64, 62, 3);
+                behind: () => {                  // видна только пыль по краям силуэта
+                    impact(57, 118, 1);
+                    dither(30, 110, 56, 8, "#cbb79a");
+                    bez(44, 20, 70, 30, 74, 60, STEEL_L, 1);  // край следа дуги в воздухе
                 },
             });
         } else {
@@ -546,16 +544,19 @@ function run(E) {
     function frameDeath(p) {
         if (p === 0) {                           // ранен: топор накренился
             figureFront(0, {
-                sway: 3, noAxe: true,
-                front: () => {
+                sway: 3, noAxe: true, noArms: true,
+                pose: () => {                    // руки к накренившемуся топору
                     shaftLine(52, 98, 66, 40);
                     axeHead(68, 37, 22, -60, 1);
-                    R(50, 54, 1, 18, "#ffe8d8"); R(62, 58, 1, 22, "#ffffff");
+                    armFront(34, 58, 40, 74, 52, 80, 0);
+                    armFront(82, 58, 78, 70, 64, 56, 0);
+                    fist(54, 82, 0); fist(66, 54, 0);
                 },
+                front: () => { R(50, 54, 1, 18, "#ffe8d8"); R(62, 58, 1, 22, "#ffffff"); },
             });
         } else if (p === 1) {                    // на колени, топор падает
             figureFront(8, {
-                sway: 2, noAxe: true, dyL: 6, dyR: 6,
+                sway: 2, noAxe: true, noArms: true, dyL: 6, dyR: 6,
                 behind: () => {                  // топор уже на земле — частично за телом
                     shaftLine(76, 120, 100, 112);
                     axeHead(102, 111, 26, -8, 1);
@@ -563,7 +564,7 @@ function run(E) {
             });
         } else if (p === 2) {                    // оседает
             figureFront(16, {
-                sway: 1, noAxe: true, dyL: 8, dyR: 8,
+                sway: 1, noAxe: true, noArms: true, dyL: 8, dyR: 8,
                 behind: () => {
                     shaftLine(76, 120, 100, 112);
                     axeHead(102, 111, 26, -8, 1);

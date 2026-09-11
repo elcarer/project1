@@ -1,7 +1,7 @@
 {
   "size": 128,
   "columns": 5,
-  "fps": 6,
+  "fps": 8,
   "animations": [
     {
       "name": "wait",
