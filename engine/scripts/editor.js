@@ -11,6 +11,10 @@
 //   E.resize(px) E.size()                      — размер холста
 //   await E.open("mage_64.png")                — открыть PNG+манифест
 //   await E.export("mage_64.png")              — сохранить сетку + манифест
+//   E.shiftFrame() E.copySel() E.pasteSel() E.clearSel() — кадр/выделение
+// Лассо: обводка мышью задаёт контур, рисование действует только внутри
+// него; клик без обводки снимает выделение; Ctrl+C / Ctrl+V / Del —
+// копировать / вставить / стереть фрагмент.
 const SIZE = 64; // переопределяется ниже через let — это поле документа
 let size = 64;
 let zoom = 8;
@@ -39,6 +43,9 @@ let tool = "pixel";           // pixel | fill | eraser | pick
 let playing = false;
 let playTimer = null;
 let fps = 8;                  // скорость проигрывания анимации → пишется в манифест
+let selection = null;         // выделение «лассо»: { mask: Uint8Array(size*size) }
+let lassoPts = null;          // контур, который обводят мышью прямо сейчас
+let clipboard = null;         // буфер обмена: { size, data, mask } фрагмент кадра
 
 const curRow = () => sheet.rows[rowIndex];
 const curFrames = () => curRow().frames;
@@ -68,6 +75,8 @@ function render() {
         line(i * zoom, 0, i * zoom, canvas.height);
         line(0, i * zoom, canvas.width, i * zoom);
     }
+    if (selection) drawSelection();
+    if (lassoPts) drawLasso();
     renderFramesStrip();
     scheduleSheetPreview();
 }
@@ -95,7 +104,7 @@ function lineTo(x0, y0, x1, y1, c) {
     let sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
     let err = dx - dy;
     while (true) {
-        setPixel(x0, y0, c);
+        setPixelUI(x0, y0, c);
         if (x0 === x1 && y0 === y1) break;
         const e2 = 2 * err;
         if (e2 > -dy) { err -= dy; x0 += sx; }
@@ -104,11 +113,13 @@ function lineTo(x0, y0, x1, y1, c) {
 }
 
 function floodFill(x, y, c) {
+    if (!inSelection(x, y)) return;
     const target = getPixel(x, y);
     if (target === c) return;
     const stack = [[x, y]];
     while (stack.length) {
         const [cx, cy] = stack.pop();
+        if (!inSelection(cx, cy)) continue;
         if (getPixel(cx, cy) !== target) continue;
         setPixel(cx, cy, c);
         stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
@@ -132,13 +143,28 @@ function maybeRender() { if (!silentMode) render(); }
 canvas.addEventListener("pointerdown", (event) => {
     const { x, y } = canvasPos(event);
     if (tool === "pick") { pickColor(x, y); return; }
+    if (tool === "lasso") {
+        lassoPts = [[x, y]];
+        try {
+            canvas.setPointerCapture(event.pointerId); // контур можно вести за пределы доски
+        } catch { /* синтетический указатель — не критично */ }
+        return;
+    }
     painting = true;
     lastPixel = { x, y };
     if (tool === "fill") floodFill(x, y, color);
-    else setPixel(x, y, event.button === 2 ? null : color);
+    else setPixelUI(x, y, event.button === 2 ? null : color);
     render();
 });
 canvas.addEventListener("pointermove", (event) => {
+    if (lassoPts) {
+        const { x, y } = canvasPos(event);
+        const cx = Math.max(0, Math.min(size - 1, x));
+        const cy = Math.max(0, Math.min(size - 1, y));
+        const last = lassoPts[lassoPts.length - 1];
+        if (cx !== last[0] || cy !== last[1]) { lassoPts.push([cx, cy]); render(); }
+        return;
+    }
     if (!painting) return;
     const { x, y } = canvasPos(event);
     if (tool === "pixel" || tool === "eraser") {
@@ -148,13 +174,157 @@ canvas.addEventListener("pointermove", (event) => {
     }
     render();
 });
-window.addEventListener("pointerup", () => { painting = false; });
+window.addEventListener("pointerup", () => {
+    if (lassoPts) { finishLasso(); return; }
+    painting = false;
+});
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
 function pickColor(x, y) {
     const c = getPixel(x, y);
     if (c) { color = c; colorInput.value = c; syncSwatches(); }
 }
+
+// ===== ЛАССО: ВЫДЕЛЕНИЕ КОНТУРОМ =====
+function setStatus(text) {
+    document.getElementById("status").textContent = text;
+}
+
+// Активно ли выделение в точке: без контура разрешено всё
+function inSelection(x, y) {
+    return !selection || selection.mask[y * size + x] === 1;
+}
+
+// Рисование мышью с учётом контура (кисть/ластик/заливка молчат снаружи).
+// Программный API (E.px/E.rect) использует setPixel напрямую и контур не учитывает.
+function setPixelUI(x, y, c) {
+    if (x < 0 || y < 0 || x >= size || y >= size) return;
+    if (!inSelection(x, y)) return;
+    curFrames()[current][y * size + x] = c;
+}
+
+function finishLasso() {
+    const pts = lassoPts;
+    lassoPts = null;
+    if (!pts) return;
+    if (pts.length === 1) { // клик без обводки — снять выделение
+        selection = null;
+        render();
+        return;
+    }
+    const mask = polygonMask(pts);
+    let count = 0;
+    for (let i = 0; i < mask.length; i++) count += mask[i];
+    if (!count) { render(); return; }
+    selection = { mask };
+    setStatus(`выделено пикселей: ${count} (Ctrl+C копия, Ctrl+V вставка, Del стереть)`);
+    render();
+}
+
+// Чётно-нечётное заполнение полигона сканлайнами (сэмпл в центре пикселя)
+function polygonMask(pts) {
+    const mask = new Uint8Array(size * size);
+    const n = pts.length;
+    const ys = pts.map(p => p[1]);
+    const y0 = Math.max(0, Math.min(...ys));
+    const y1 = Math.min(size - 1, Math.max(...ys));
+    for (let y = y0; y <= y1; y++) {
+        const xs = [];
+        const mid = y + 0.5;
+        for (let i = 0; i < n; i++) {
+            const [xa, ya] = pts[i];
+            const [xb, yb] = pts[(i + 1) % n];
+            if (ya === yb) continue;
+            if (mid >= Math.min(ya, yb) && mid < Math.max(ya, yb)) {
+                xs.push(xa + (mid - ya) * (xb - xa) / (yb - ya));
+            }
+        }
+        xs.sort((a, b) => a - b);
+        for (let k = 0; k + 1 < xs.length; k += 2) {
+            const from = Math.max(0, Math.ceil(xs[k] - 0.5));
+            const to = Math.min(size - 1, Math.floor(xs[k + 1] - 0.5));
+            for (let x = from; x <= to; x++) mask[y * size + x] = 1;
+        }
+    }
+    return mask;
+}
+
+function drawSelection() {
+    const m = selection.mask;
+    ctx.fillStyle = "rgba(13,14,17,0.45)";    // затемнение снаружи контура
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            if (!m[y * size + x]) ctx.fillRect(x * zoom, y * zoom, zoom, zoom);
+        }
+    }
+    ctx.fillStyle = "rgba(136,255,204,0.85)"; // рамка по границе контура
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const i = y * size + x;
+            if (!m[i]) continue;
+            const edge = x === 0 || x === size - 1 || y === 0 || y === size - 1
+                || !m[i - 1] || !m[i + 1] || !m[i - size] || !m[i + size];
+            if (edge) ctx.fillRect(x * zoom, y * zoom, zoom, zoom);
+        }
+    }
+}
+
+function drawLasso() {
+    ctx.strokeStyle = "#88ffcc";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    lassoPts.forEach(([x, y], i) => {
+        const px = x * zoom + zoom / 2, py = y * zoom + zoom / 2;
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    ctx.lineWidth = 1;
+}
+
+function copySelection() {
+    if (!selection) return;
+    const f = curFrames()[current];
+    const data = new Array(f.length).fill(null);
+    let count = 0;
+    for (let i = 0; i < f.length; i++) {
+        if (selection.mask[i] && f[i]) { data[i] = f[i]; count++; }
+    }
+    clipboard = { size, data, mask: selection.mask.slice() };
+    setStatus(`скопировано пикселей: ${count}`);
+}
+
+function pasteClipboard() {
+    if (!clipboard) return;
+    if (clipboard.size !== size) {
+        setStatus(`в буфере фрагмент ${clipboard.size}×${clipboard.size}, а холст ${size}×${size}`);
+        return;
+    }
+    const f = curFrames()[current];
+    let count = 0;
+    for (let i = 0; i < clipboard.data.length; i++) {
+        if (clipboard.mask[i] && clipboard.data[i]) { f[i] = clipboard.data[i]; count++; }
+    }
+    render();
+    setStatus(`вставлено пикселей: ${count}`);
+}
+
+function deleteInSelection() {
+    if (!selection) return;
+    const f = curFrames()[current];
+    for (let i = 0; i < f.length; i++) if (selection.mask[i]) f[i] = null;
+    render();
+    setStatus("пиксели внутри контура стёрты");
+}
+
+// Горячие клавиши выделения (по event.code — работает и на русской раскладке)
+window.addEventListener("keydown", (event) => {
+    const tag = (event.target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea") return;
+    if (event.code === "Delete" && selection) { deleteInSelection(); event.preventDefault(); }
+    else if (event.code === "Escape" && selection) { selection = null; render(); }
+    else if (event.ctrlKey && event.code === "KeyC" && selection) { copySelection(); event.preventDefault(); }
+    else if (event.ctrlKey && event.code === "KeyV" && clipboard) { pasteClipboard(); event.preventDefault(); }
+});
 
 // ===== РАЗМЕР ХОЛСТА =====
 // Новые пиксели — прозрачные; старое изображение переносится с центровкой
@@ -181,6 +351,7 @@ function resize(newSize) {
     size = newSize;
     document.getElementById("sizeInput").value = size;
     applyBoardSize();
+    selection = null; lassoPts = null; clipboard = null; // маски старого размера недействительны
     render();
     return size;
 }
@@ -346,9 +517,24 @@ function deleteFrame() {
     render();
 }
 
+// «Подвинуть»: обменять текущий кадр со следующим (по кругу); выделение
+// следует за кадром, поэтому повторные нажатия двигают его дальше по ряду
+function shiftFrame() {
+    const frames = curFrames();
+    if (frames.length < 2) return current;
+    const next = (current + 1) % frames.length;
+    [frames[current], frames[next]] = [frames[next], frames[current]];
+    current = next;
+    render();
+    return current;
+}
+
 document.getElementById("addFrame").onclick = () => newFrame(true);
 document.getElementById("emptyFrame").onclick = () => newFrame(false);
 document.getElementById("delFrame").onclick = deleteFrame;
+document.getElementById("shiftFrame").onclick = () => shiftFrame();
+// «Отразить»: зеркальное отражение текущего кадра по горизонтали
+document.getElementById("mirrorFrame").onclick = () => __EDITOR.flipX();
 document.getElementById("clearFrame").onclick = () => {
     curFrames()[current] = emptyFrame();
     render();
@@ -656,7 +842,25 @@ const __EDITOR = {
     },
     setFrame: (i) => { current = Math.max(0, Math.min(i, curFrames().length - 1)); render(); return current; },
     frameCount: () => curFrames().length,
+    shiftFrame,
     clear: () => { curFrames()[current] = emptyFrame(); maybeRender(); return true; },
+    // ---- выделение лассо ----
+    hasSel: () => !!selection,
+    selInfo: () => {
+        if (!selection) return null;
+        const m = selection.mask;
+        let count = 0, minX = size, minY = size, maxX = -1, maxY = -1;
+        for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+            if (!m[y * size + x]) continue;
+            count++;
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+        }
+        return { count, minX, minY, maxX, maxY };
+    },
+    copySel: () => { copySelection(); return !!clipboard; },
+    pasteSel: () => { pasteClipboard(); return true; },
+    clearSel: () => { selection = null; render(); return true; },
     // Батч-рисование: примитивы внутри fn не перерисовывают доску
     silent: (fn) => { silentMode = true; try { fn(); } finally { silentMode = false; render(); } },
     // ---- экспорт / открытие ----

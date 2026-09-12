@@ -92,12 +92,16 @@
                 <button data-tool="fill">заливка</button>
                 <button data-tool="eraser">ластик</button>
                 <button data-tool="pick">пипетка</button>
+                <button data-tool="lasso" title="обводка мышью = выделение; рисование только внутри контура; клик без обводки — снять">лассо</button>
             </div>
+            <div style="font-size:10px;color:#7a8494;">лассо: Ctrl+C — копия, Ctrl+V — вставка, Del — стереть в контуре, клик — снять</div>
             <h2>Кадры</h2>
             <div class="tools">
                 <button id="addFrame">дубль+</button>
                 <button id="emptyFrame">пустой+</button>
                 <button id="delFrame">удалить</button>
+                <button id="shiftFrame" title="обменять текущий кадр со следующим (по кругу), выделение следует за кадром">подвинуть</button>
+                <button id="mirrorFrame" title="зеркально отразить текущий кадр по горизонтали">отразить</button>
             </div>
             <div class="tools">
                 <button id="clearFrame">очистить кадр</button>
@@ -127,6 +131,6 @@
         <h1 style="margin-bottom:4px;">Спрайтшит целиком (клик по кадру — перейти к нему)</h1>
         <canvas id="sheetPreview" style="border:1px solid #2a2e36; image-rendering: pixelated; max-width: 96vw; height: auto; cursor: pointer;"></canvas>
     </div>
-    <script src="./scripts/editor.js?v=9"></script>
+    <script src="./scripts/editor.js?v=10"></script>
 </body>
 </html>
