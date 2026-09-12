@@ -16,13 +16,16 @@ python nocache-server.py   # отдаёт Cache-Control: no-cache (рекоме�
 модули из эвристического кэша, не обращаясь к серверу (симптом: правки не применяются).
 Импорты модулей содержат `?v=2` — при «залипании» кэша поднимите версию в импортах.
 
+Исключение — инструменты-редакторы **editor.html** и **dualgrid_editor.html**: их скрипты
+подключены обычными `<script>`-тегами (глобали), поэтому они работают и по двойному клику
+с `file://`, без сервера.
+
 ## Структура файлов
 
 ```
 engine/
 ├── index.html                  # входная точка: подключает pixi.min.js и game.js (type="module")
 ├── editor.html                 # ПИКСЕЛЬНЫЙ РЕДАКТОР: персонажи 64×64, кадры анимации, экспорт
-├── dualgrid.html               # ДЕМО генерации пола (Dual Grid): карта 30×17, сид, зум, сетка данных
 ├── dualgrid_editor.html        # РЕДАКТОР КАРТ: слои, кисть/штамп, выделение, генерация, save/load JSON
 ├── dll/pixi.min.js             # PixiJS 8.19 (локальная копия, включает AnimatedSprite)
 ├── nocache-server.py           # сервер разработки: no-cache заголовки + POST /save (сохранение PNG)
@@ -190,7 +193,7 @@ app.stage
 | assets | `createAssets()` | `load(urls, onProgress), loadSpritesheet(url,fw,fh), get(url)` |
 | hud | `createHUD({app, addSystem})` | `bar(name,{get}) — автообновление, text(name,str), setText` |
 | scenes | `createScenes({addSystem})` | `add(name,{enter,exit,update}), go(name), is(name), current` |
-| dualgrid | `createDualGrid()` | `build/update/tileIndex/detectLayout`, `generateMap({w,h,seed,frequency,scatter})`, `makeManifest/makeMap`, `mapFromManifest/mapFromJSON(json, textures)→Promise` |
+| dualgrid | глобаль `createDualGrid()` (script-тег или import) | `build/update/tileIndex/detectLayout`, `generateMap({w,h,seed,frequency,scatter})`, `makeManifest/makeMap`, `mapFromManifest/mapFromJSON(json, textures)→Promise` |
 | debug | `createDebug({app, addSystem, world, grid, components, layer, overlayPos})` | оверлей; `info[ключ]=значение`; клавиши F3/G/H |
 
 Паттерн подключения (в `game.js`):
@@ -204,7 +207,7 @@ const camera = createCamera({ app, container: engine.worldContainer, addSystem }
 в update сцены (поэтому на паузе таймеры стоят), `input.endFrame()` — в конце кадра сцены
 (сброс однокадровых флагов после того, как сцена их прочитала).
 
-## Генерация пола: Dual Grid System (modules/dualgrid.js + dualgrid.html)
+## Генерация пола: Dual Grid System (modules/dualgrid.js + dualgrid_editor.html)
 
 Автотайлинг по схеме Jess::Codes («двойная сетка»): тайл ложится не внутрь ячейки карты,
 а на её угол — точку схождения 4 ячеек данных. Биты 4 ячеек (TL/TR/BL/BR) дают 2⁴ = 16
@@ -226,11 +229,12 @@ const camera = createCamera({ app, container: engine.worldContainer, addSystem }
 - **Наслаивание местностей** (река поверх пятен земли): верхний слой строится с
   `hideBackground: true` — его чисто-фоновые тайлы скрываются (у воды непрозрачная трава
   иначе закрасила бы нижний слой). Слои просто добавляются в один контейнер по порядку.
-- **Демо** `dualgrid.html`: карта 30×17 из fBm-шума (сид, кнопка «новая карта»), пороги
-  высот: < 0.40 вода, > 0.62 земля, зум 1–3× (авто), оверлей «сетка данных», мини-пример
-  6×4 (данные → результат обоих тайлсетов). Статус-строка содержит self-test: каждый тайл
-  слоя сверяется с `tileIndex()` + проверка detectLayout. API для консоли/агента —
-  `window.__DUALGRID`.
+- **Подключение** — обычный `<script src="./scripts/engine/modules/dualgrid.js">` (как и
+  pixi.min.js): модуль создаёт глобальную `createDualGrid()` и работает в том числе с
+  `file://`. То же самое даёт `import "./dualgrid.js"` внутри ES-модуля (файл без
+  `export` валиден как модуль, глобальная ставится как побочный эффект).
+- **Редактор** `dualgrid_editor.html` (см. ниже) — рабочий инструмент для этих тайлсетов:
+  генерация, рисование, сохранение/загрузка; старая демо-страница `dualgrid.html` удалена.
 
 ```js
 const dual = createDualGrid();
@@ -474,6 +478,12 @@ window.__TEST    // полигон game.js: счёт, health, camera, scheduler,
    пустого реестра; кисть/штамп/выделение/вставка/панорама/зум проверены реальными
    событиями мыши. Исправлено по ходу: resize передавал в update() старые размеры
    (рассинхрон массива спрайтов), setPointerCapture ломал синтетические события.
+5. **Работа без сервера (file://)**: демо `dualgrid.html` удалена (её заменил редактор);
+   `dualgrid.js` больше не ES-модуль с export — обычный скрипт, создающий глобальную
+   `createDualGrid` (валиден и для `import`); редактор подключает его `<script>`-тегом,
+   стартовые текстуры грузятся через `<img>` (fetch на file:// заблокирован), основной
+   код — классический скрипт с async-обёрткой. Двойной клик по dualgrid_editor.html
+   открывает редактор без сервера.
 
 ### Модуль dualgrid — генерация пола (2026-09-12)
 

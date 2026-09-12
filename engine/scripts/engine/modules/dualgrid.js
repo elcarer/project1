@@ -482,4 +482,7 @@ function createDualGrid() {
              mapFromManifest, mapFromJSON, TILE_CORNERS };
 }
 
-export { createDualGrid };
+// Подключение двумя способами (файл без import/export валиден и как ES-модуль):
+//   1) обычный <script src="..."> — создаётся глобальная createDualGrid (работает и на file://);
+//   2) import "./dualgrid.js" внутри модуля — глобальная ставится как побочный эффект.
+globalThis.createDualGrid = createDualGrid;

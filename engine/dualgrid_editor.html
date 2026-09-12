@@ -114,8 +114,10 @@
     #stMsg { color: #88ffc8; }
     #stTest { margin-left: auto; color: #7fb8ff; }
 </style>
-<!-- Подключаем ЛОКАЛЬНЫЙ PixiJS -->
+<!-- Подключаем ЛОКАЛЬНЫЙ PixiJS и модуль dualgrid обычными скриптами —
+     это работает и по двойному клику (file://), без сервера -->
 <script src="./dll/pixi.min.js"></script>
+<script src="./scripts/engine/modules/dualgrid.js"></script>
 </head>
 <body>
 <header>
@@ -218,11 +220,11 @@
     <span id="stTest"></span>
 </footer>
 
-<script type="module">
-import { createDualGrid } from "./scripts/engine/modules/dualgrid.js?v=2";
+<script>
+(async () => {   // классический скрипт с обёрткой — работает и на file:// (модули там заблокированы)
 
 const TS = 32;                    // размер тайла (и ячейки данных) в пикселях мира
-const dual = createDualGrid();
+const dual = createDualGrid();    // глобальная из modules/dualgrid.js
 const $ = (id) => document.getElementById(id);
 
 const TOOL_NAMES = { brush: "✏ Кисть", eraser: "🧽 Ластик", bucket: "🪣 Заливка",
@@ -1101,16 +1103,17 @@ window.__MAPEDITOR = {
 
 // ── СТАРТ: реестр тайлсетов + два слоя + генерация по манифесту ──────────────
 for (const name of ["grass_dirt.png", "grass_water.png"]) {
-    const tex = await PIXI.Assets.load(`images/tiles/${name}`);
-    tex.source.scaleMode = "nearest";
-    textures[name] = tex;
-    images[name] = tex.source.resource;
+    // <img> вместо PIXI.Assets (fetch): работает и по file://, где fetch заблокирован
+    const img = await loadImageEl(`images/tiles/${name}`);
+    textures[name] = textureFromImage(img);
+    images[name] = img;
 }
 addLayer("grass_dirt.png", { frequency: 30, scatter: 55 }, false);
 addLayer("grass_water.png", { frequency: 25, scatter: 40, hideBackground: true }, false);
 await generateAll(false);
 fitView();
 setTool("brush");
+})();
 </script>
 </body>
 </html>
