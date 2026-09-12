@@ -588,9 +588,14 @@ for it in accepted:
     canvas = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
     canvas.paste(Image.fromarray(rgba, "RGBA"), ((cw - w) // 2, ch - h))
     canvas.save(os.path.join(OUT, f"{it['name']}.png"), optimize=True)
-    items.append(dict(name=it["name"], ru=it["ru"], group=it["group"], file=f"{it['name']}.png",
-                      w=cw, h=ch, cellsX=cw // 32, cellsY=ch // 32,
-                      weight=GROUP_WEIGHT[it["group"]]))
+    cx, cy = cw // 32, ch // 32
+    # проходимость по умолчанию: непроходима нижняя строка (корни/ствол/основание),
+    # для объектов в 1 клетку — сама клетка
+    items.append({"name": it["name"], "ru": it["ru"], "group": it["group"],
+                  "file": f"{it['name']}.png",
+                  "w": cw, "h": ch, "cellsX": cx, "cellsY": cy,
+                  "weight": GROUP_WEIGHT[it["group"]],
+                  "pass": "0" * (cx * (cy - 1)) + "1" * cx})
 
 meta = dict(source="elven_wood, листы «замени-спрайты-окружения» 1–2", tileSize=32,
             anchor="bottom-center", density=12, count=len(items), items=items)

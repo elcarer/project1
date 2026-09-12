@@ -76,6 +76,14 @@
 //   раскладка стабильна при смене весов, меняется только выбор объектов.
 //   API: buildObjects({items, ts, w, h}), syncObjects(container, placements),
 //   placeObject / eraseObjectAt / objectAt, objectFootprint, generateObjects.
+//
+// ПРОХОДИМОСТЬ: каждый объект несёт сетку pass длиной cellsX*cellsY (построчно
+//   сверху вниз; 1 — клетка НЕпроходима; по умолчанию непроходима нижняя строка —
+//   корни/ствол/основание). Редактор даёт менять её кликами и хранит в файлах
+//   (items[i].pass — строка "0101…"). Для движка: buildCollisionMap({w, h, items,
+//   placements, ts}) → { w, h, blocked: Uint8Array, isBlocked(px, py) } — сборная
+//   карта непроходимых клеток всех объектов; isBlocked принимает мировые пиксели.
+//   mapFromManifest/mapFromJSON при наличии objects сами добавляют result.collision.
 
 // Углы каждого тайла 4×4: [TL, TR, BL, BR]; 1 — угол «фичи», 0 — угол фона.
 // Индекс тайла = строка * 4 + столбец (0 — левый верхний, 15 — правый нижний).
@@ -459,9 +467,29 @@ function createDualGrid() {
         return placements; // отсортировано по (y, x) — порядок обхода ячеек
     }
 
-    // Контейнер объектов. items: [{ name, texture, w?, h? }] — размеры по умолчанию
-    // берутся из текстуры и должны быть кратны ts. w/h карты — для проверки границ
-    // при placeObject (генерация границы считает сама).
+    // Карта проходимости объекта: строка "0101…" длиной cellsX*cellsY
+    // (построчно сверху вниз; 1 — клетка НЕпроходима) → Uint8Array.
+    // По умолчанию непроходима только нижняя строка (корни/ствол/основание).
+    function defaultPass(cellsX, cellsY) {
+        const pass = new Uint8Array(cellsX * cellsY);
+        for (let x = 0; x < cellsX; x++) pass[(cellsY - 1) * cellsX + x] = 1;
+        return pass;
+    }
+    function normalizePass(it, cellsX, cellsY) {
+        const n = cellsX * cellsY;
+        let pass = null;
+        if (typeof it.pass === "string" && /^[01]*$/.test(it.pass) && it.pass.length === n) {
+            pass = Uint8Array.from(it.pass.split("").map((c) => (c === "1" ? 1 : 0)));
+        } else if (it.pass instanceof Uint8Array || Array.isArray(it.pass)) {
+            const arr = Uint8Array.from(it.pass);
+            if (arr.length === n) pass = arr;
+        }
+        return pass || defaultPass(cellsX, cellsY);
+    }
+
+    // Контейнер объектов. items: [{ name, texture, pass?, w?, h? }] — размеры по
+    // умолчанию берутся из текстуры и должны быть кратны ts. w/h карты — для
+    // проверки границ при placeObject (генерация границы считает сама).
     function buildObjects({ items, ts = 32, w = Infinity, h = Infinity }) {
         const norm = items.map((it) => {
             it.texture.source.scaleMode = "nearest";
@@ -469,7 +497,9 @@ function createDualGrid() {
             if ((tw / ts) % 1 !== 0 || (th / ts) % 1 !== 0) {
                 throw new Error(`dualgrid.buildObjects: «${it.name}» размер ${tw}×${th} не кратен ${ts}`);
             }
-            return { name: it.name, texture: it.texture, w: tw, h: th, cellsX: tw / ts, cellsY: th / ts };
+            const cellsX = tw / ts, cellsY = th / ts;
+            return { name: it.name, texture: it.texture, w: tw, h: th, cellsX, cellsY,
+                     pass: normalizePass(it, cellsX, cellsY) };
         });
         const container = new PIXI.Container();
         container.sortableChildren = true; // порядок отрисовки — по zIndex (ось Y)
@@ -537,6 +567,34 @@ function createDualGrid() {
         return [p.t, p.x, p.y];
     }
 
+    // Карта коллизий по объектам: собирает непроходимые клетки всех placements
+    // в Uint8Array размером карты (1 — клетка занята объектом). items —
+    // meta.items контейнера объектов (там уже нормализована pass-сетка).
+    // isBlocked(px, py) — проверка в мировых ПИКСЕЛЯХ, для персонажей.
+    function buildCollisionMap({ w, h, items, placements, ts = 32 }) {
+        const blocked = new Uint8Array(w * h);
+        for (const [t, x, y] of placements || []) {
+            const it = items[t];
+            if (!it) continue;
+            const fp = objectFootprint(it, x, y, ts);
+            for (let cy = 0; cy < it.cellsY; cy++) {
+                for (let cx = 0; cx < it.cellsX; cx++) {
+                    if (!it.pass[cy * it.cellsX + cx]) continue;
+                    const gx = fp.x0 + cx, gy = fp.y0 + cy;
+                    if (gx >= 0 && gy >= 0 && gx < w && gy < h) blocked[gy * w + gx] = 1;
+                }
+            }
+        }
+        return {
+            w, h, blocked,
+            isBlocked(px, py) {
+                const gx = Math.floor(px / ts), gy = Math.floor(py / ts);
+                if (gx < 0 || gy < 0 || gx >= w || gy >= h) return false;
+                return blocked[gy * w + gx] === 1;
+            },
+        };
+    }
+
     // ── МАНИФЕСТ И ФАЙЛ КАРТЫ (JSON) ──────────────────────────────────────────
     function assertFormat(obj, expected, what) {
         if (!obj || obj.format !== expected) {
@@ -577,7 +635,11 @@ function createDualGrid() {
             out.objects = {
                 density: clampPercent(objects.density ?? 12),
                 avoidHideBg: objects.avoidHideBg !== false,
-                items: (objects.items || []).map((it) => ({ name: it.name, weight: clampWeight(it.weight) })),
+                items: (objects.items || []).map((it) => {
+                    const o = { name: it.name, weight: clampWeight(it.weight) };
+                    if (typeof it.pass === "string" && /^[01]+$/.test(it.pass)) o.pass = it.pass;
+                    return o;
+                }),
             };
         }
         return out;
@@ -621,7 +683,11 @@ function createDualGrid() {
                 return [t, x, y];
             });
             out.objects = {
-                items: (objects.items || []).map((it) => ({ name: it.name, weight: clampWeight(it.weight) })),
+                items: (objects.items || []).map((it) => {
+                    const o = { name: it.name, weight: clampWeight(it.weight) };
+                    if (typeof it.pass === "string" && /^[01]+$/.test(it.pass)) o.pass = it.pass;
+                    return o;
+                }),
                 placements,
             };
         }
@@ -734,6 +800,8 @@ function createDualGrid() {
             syncObjects(container, placements);
             root.addChild(container);
             result.objects = container;
+            result.collision = buildCollisionMap({ w, h, items: container.objectsMeta.items,
+                placements: container.objectsMeta.placements.map((p) => [p.t, p.x, p.y]), ts });
         }
         return result;
     }
@@ -772,6 +840,8 @@ function createDualGrid() {
             syncObjects(container, ospec.placements || []);
             root.addChild(container);
             result.objects = container;
+            result.collision = buildCollisionMap({ w, h, items: container.objectsMeta.items,
+                placements: container.objectsMeta.placements.map((p) => [p.t, p.x, p.y]), ts });
         }
         return result;
     }
@@ -779,7 +849,8 @@ function createDualGrid() {
     return { build, update, tileIndex, detectLayout, generateMap, separateLayer, dilateMask,
              makeManifest, makeMap, mapFromManifest, mapFromJSON, TILE_CORNERS,
              objectRect, objectFootprint, generateObjects,
-             buildObjects, syncObjects, placeObject, eraseObjectAt, objectAt };
+             buildObjects, syncObjects, placeObject, eraseObjectAt, objectAt,
+             buildCollisionMap, defaultPass };
 }
 
 // Подключение двумя способами (файл без import/export валиден и как ES-модуль):

@@ -14,7 +14,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "telescope",
@@ -25,7 +26,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "tree_sakura",
@@ -36,7 +38,8 @@
    "h": 192,
    "cellsX": 6,
    "cellsY": 6,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000000000000000000000111111"
   },
   {
    "name": "scroll",
@@ -47,7 +50,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 2
+   "weight": 2,
+   "pass": "1"
   },
   {
    "name": "book",
@@ -58,7 +62,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 2
+   "weight": 2,
+   "pass": "1"
   },
   {
    "name": "tree_birch",
@@ -69,7 +74,8 @@
    "h": 192,
    "cellsX": 3,
    "cellsY": 6,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000000111"
   },
   {
    "name": "keys",
@@ -80,7 +86,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 2
+   "weight": 2,
+   "pass": "1"
   },
   {
    "name": "fairy",
@@ -91,7 +98,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "tree_oak_big",
@@ -102,7 +110,8 @@
    "h": 256,
    "cellsX": 8,
    "cellsY": 8,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000000000000000000000000000000000000000000000000011111111"
   },
   {
    "name": "pond",
@@ -113,7 +122,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "jug",
@@ -124,7 +134,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "vase_orange",
@@ -135,7 +146,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "pot_dark",
@@ -146,7 +158,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "gem_green",
@@ -157,7 +170,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 1
+   "weight": 1,
+   "pass": "1"
   },
   {
    "name": "gems_blue",
@@ -168,7 +182,8 @@
    "h": 64,
    "cellsX": 1,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "01"
   },
   {
    "name": "gem_teal",
@@ -179,7 +194,8 @@
    "h": 64,
    "cellsX": 1,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "01"
   },
   {
    "name": "vase_set",
@@ -190,7 +206,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "gem_blue",
@@ -201,7 +218,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 1
+   "weight": 1,
+   "pass": "1"
   },
   {
    "name": "gem_red",
@@ -212,7 +230,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 1
+   "weight": 1,
+   "pass": "1"
   },
   {
    "name": "stones",
@@ -223,7 +242,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "gems_navy",
@@ -234,7 +254,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "gem_ice",
@@ -245,7 +266,8 @@
    "h": 64,
    "cellsX": 1,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "01"
   },
   {
    "name": "moss",
@@ -256,7 +278,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 3
+   "weight": 3,
+   "pass": "1"
   },
   {
    "name": "tree_topiary",
@@ -267,7 +290,8 @@
    "h": 128,
    "cellsX": 2,
    "cellsY": 4,
-   "weight": 1
+   "weight": 1,
+   "pass": "00000011"
   },
   {
    "name": "tree_willow",
@@ -278,7 +302,8 @@
    "h": 160,
    "cellsX": 4,
    "cellsY": 5,
-   "weight": 1
+   "weight": 1,
+   "pass": "00000000000000001111"
   },
   {
    "name": "flowers_lupine",
@@ -289,7 +314,8 @@
    "h": 96,
    "cellsX": 2,
    "cellsY": 3,
-   "weight": 3
+   "weight": 3,
+   "pass": "000011"
   },
   {
    "name": "gem_amber",
@@ -300,7 +326,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 1
+   "weight": 1,
+   "pass": "1"
   },
   {
    "name": "sundial_fern",
@@ -311,7 +338,8 @@
    "h": 192,
    "cellsX": 3,
    "cellsY": 6,
-   "weight": 2
+   "weight": 2,
+   "pass": "000000000000000111"
   },
   {
    "name": "gem_purple",
@@ -322,7 +350,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 1
+   "weight": 1,
+   "pass": "1"
   },
   {
    "name": "butterfly_frame",
@@ -333,7 +362,8 @@
    "h": 128,
    "cellsX": 4,
    "cellsY": 4,
-   "weight": 2
+   "weight": 2,
+   "pass": "0000000000001111"
   },
   {
    "name": "leaf_gold",
@@ -344,7 +374,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 2
+   "weight": 2,
+   "pass": "1"
   },
   {
    "name": "tree_blue_big",
@@ -355,7 +386,8 @@
    "h": 192,
    "cellsX": 9,
    "cellsY": 6,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000000000000000000000000000000000000111111111"
   },
   {
    "name": "tree_lush",
@@ -366,7 +398,8 @@
    "h": 192,
    "cellsX": 4,
    "cellsY": 6,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000000000001111"
   },
   {
    "name": "flowers_pink",
@@ -377,7 +410,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "0011"
   },
   {
    "name": "bush_round_dark",
@@ -388,7 +422,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "0011"
   },
   {
    "name": "bush_double",
@@ -399,7 +434,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "0011"
   },
   {
    "name": "bush_cypress",
@@ -410,7 +446,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "0011"
   },
   {
    "name": "bush_berry",
@@ -421,7 +458,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "0011"
   },
   {
    "name": "bush_round",
@@ -432,7 +470,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "0011"
   },
   {
    "name": "bush_leafy",
@@ -443,7 +482,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "0011"
   },
   {
    "name": "bush_hedge",
@@ -454,7 +494,8 @@
    "h": 64,
    "cellsX": 3,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "000111"
   },
   {
    "name": "moss_patch",
@@ -465,7 +506,8 @@
    "h": 32,
    "cellsX": 2,
    "cellsY": 1,
-   "weight": 3
+   "weight": 3,
+   "pass": "11"
   },
   {
    "name": "rock_moss",
@@ -476,7 +518,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "alchemy_table",
@@ -487,7 +530,8 @@
    "h": 128,
    "cellsX": 4,
    "cellsY": 4,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000001111"
   },
   {
    "name": "anvil",
@@ -498,7 +542,8 @@
    "h": 96,
    "cellsX": 5,
    "cellsY": 3,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000011111"
   },
   {
    "name": "loom",
@@ -509,7 +554,8 @@
    "h": 128,
    "cellsX": 4,
    "cellsY": 4,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000001111"
   },
   {
    "name": "spinning_wheel",
@@ -520,7 +566,8 @@
    "h": 128,
    "cellsX": 4,
    "cellsY": 4,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000001111"
   },
   {
    "name": "runestone",
@@ -531,7 +578,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "post_vine",
@@ -542,7 +590,8 @@
    "h": 96,
    "cellsX": 1,
    "cellsY": 3,
-   "weight": 2
+   "weight": 2,
+   "pass": "001"
   },
   {
    "name": "well",
@@ -553,7 +602,8 @@
    "h": 320,
    "cellsX": 8,
    "cellsY": 10,
-   "weight": 1
+   "weight": 1,
+   "pass": "00000000000000000000000000000000000000000000000000000000000000000000000011111111"
   },
   {
    "name": "pottery_bench",
@@ -564,7 +614,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "easel",
@@ -575,7 +626,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "shield_wall",
@@ -586,7 +638,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "topiary_chime",
@@ -597,7 +650,8 @@
    "h": 160,
    "cellsX": 2,
    "cellsY": 5,
-   "weight": 2
+   "weight": 2,
+   "pass": "0000000011"
   },
   {
    "name": "well_tub",
@@ -608,7 +662,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "pottery_wheel",
@@ -619,7 +674,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "tools_wall",
@@ -630,7 +686,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "flower_stand",
@@ -641,7 +698,8 @@
    "h": 128,
    "cellsX": 2,
    "cellsY": 4,
-   "weight": 2
+   "weight": 2,
+   "pass": "00000011"
   },
   {
    "name": "rock_amphora",
@@ -652,7 +710,8 @@
    "h": 192,
    "cellsX": 4,
    "cellsY": 6,
-   "weight": 2
+   "weight": 2,
+   "pass": "000000000000000000001111"
   },
   {
    "name": "rune_plate",
@@ -663,7 +722,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 1
+   "weight": 1,
+   "pass": "1"
   },
   {
    "name": "runestone_moss",
@@ -674,7 +734,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "fence",
@@ -685,7 +746,8 @@
    "h": 64,
    "cellsX": 3,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "000111"
   },
   {
    "name": "totem_small",
@@ -696,7 +758,8 @@
    "h": 64,
    "cellsX": 1,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "01"
   },
   {
    "name": "signpost",
@@ -707,7 +770,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "well_roof",
@@ -718,7 +782,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "barrel_owl",
@@ -729,7 +794,8 @@
    "h": 128,
    "cellsX": 2,
    "cellsY": 4,
-   "weight": 2
+   "weight": 2,
+   "pass": "00000011"
   },
   {
    "name": "birdhouses",
@@ -740,7 +806,8 @@
    "h": 96,
    "cellsX": 2,
    "cellsY": 3,
-   "weight": 2
+   "weight": 2,
+   "pass": "000011"
   },
   {
    "name": "windchime_lantern",
@@ -751,7 +818,8 @@
    "h": 160,
    "cellsX": 2,
    "cellsY": 5,
-   "weight": 2
+   "weight": 2,
+   "pass": "0000000011"
   },
   {
    "name": "totem_deer",
@@ -762,7 +830,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "leaf_deco",
@@ -773,7 +842,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "fountain_small",
@@ -784,7 +854,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "bench_simple",
@@ -795,7 +866,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "bench_carved",
@@ -806,7 +878,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "table_round",
@@ -817,7 +890,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "planter_flowers",
@@ -828,7 +902,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "0011"
   },
   {
    "name": "torch_deadtree",
@@ -839,7 +914,8 @@
    "h": 128,
    "cellsX": 2,
    "cellsY": 4,
-   "weight": 2
+   "weight": 2,
+   "pass": "00000011"
   },
   {
    "name": "watering_can",
@@ -850,7 +926,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "bowl_herbs",
@@ -861,7 +938,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "pot_flowers",
@@ -872,7 +950,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "0011"
   },
   {
    "name": "crate_plants",
@@ -883,7 +962,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "0011"
   },
   {
    "name": "pots_clay",
@@ -894,7 +974,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "loom_workshop",
@@ -905,7 +986,8 @@
    "h": 192,
    "cellsX": 6,
    "cellsY": 6,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000000000000000000000111111"
   },
   {
    "name": "log_small",
@@ -916,7 +998,8 @@
    "h": 64,
    "cellsX": 1,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "01"
   },
   {
    "name": "shields_wall",
@@ -927,7 +1010,8 @@
    "h": 96,
    "cellsX": 6,
    "cellsY": 3,
-   "weight": 2
+   "weight": 2,
+   "pass": "000000000000111111"
   },
   {
    "name": "sign_flask_green",
@@ -938,7 +1022,8 @@
    "h": 96,
    "cellsX": 2,
    "cellsY": 3,
-   "weight": 2
+   "weight": 2,
+   "pass": "000011"
   },
   {
    "name": "sign_flask_purple",
@@ -949,7 +1034,8 @@
    "h": 96,
    "cellsX": 2,
    "cellsY": 3,
-   "weight": 2
+   "weight": 2,
+   "pass": "000011"
   },
   {
    "name": "bread_basket",
@@ -960,7 +1046,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "egg_basket",
@@ -971,7 +1058,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "signpost_small",
@@ -982,7 +1070,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "notice_board",
@@ -993,7 +1082,8 @@
    "h": 96,
    "cellsX": 3,
    "cellsY": 3,
-   "weight": 2
+   "weight": 2,
+   "pass": "000000111"
   },
   {
    "name": "birdbath",
@@ -1004,7 +1094,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "hanging_basket",
@@ -1015,7 +1106,8 @@
    "h": 128,
    "cellsX": 2,
    "cellsY": 4,
-   "weight": 2
+   "weight": 2,
+   "pass": "00000011"
   },
   {
    "name": "antlers",
@@ -1026,7 +1118,8 @@
    "h": 64,
    "cellsX": 3,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "000111"
   },
   {
    "name": "barrel",
@@ -1037,7 +1130,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "signpost_big",
@@ -1048,7 +1142,8 @@
    "h": 192,
    "cellsX": 3,
    "cellsY": 6,
-   "weight": 2
+   "weight": 2,
+   "pass": "000000000000000111"
   },
   {
    "name": "stall",
@@ -1059,7 +1154,8 @@
    "h": 192,
    "cellsX": 5,
    "cellsY": 6,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000000000000000011111"
   },
   {
    "name": "chair",
@@ -1070,7 +1166,8 @@
    "h": 96,
    "cellsX": 2,
    "cellsY": 3,
-   "weight": 1
+   "weight": 1,
+   "pass": "000011"
   },
   {
    "name": "table",
@@ -1081,7 +1178,8 @@
    "h": 96,
    "cellsX": 3,
    "cellsY": 3,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000111"
   },
   {
    "name": "shield_stones",
@@ -1092,7 +1190,8 @@
    "h": 64,
    "cellsX": 4,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "00001111"
   },
   {
    "name": "pedestal",
@@ -1103,7 +1202,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "statue_face",
@@ -1114,7 +1214,8 @@
    "h": 192,
    "cellsX": 4,
    "cellsY": 6,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000000000001111"
   },
   {
    "name": "pinecones",
@@ -1125,7 +1226,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "0011"
   },
   {
    "name": "arch_bones",
@@ -1136,7 +1238,8 @@
    "h": 192,
    "cellsX": 6,
    "cellsY": 6,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000000000000000000000111111"
   },
   {
    "name": "flowers_blue",
@@ -1147,7 +1250,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "0011"
   },
   {
    "name": "candles",
@@ -1158,7 +1262,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "horse_head",
@@ -1169,7 +1274,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "tree_palm",
@@ -1180,7 +1286,8 @@
    "h": 128,
    "cellsX": 4,
    "cellsY": 4,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000001111"
   },
   {
    "name": "tree_willow_small",
@@ -1191,7 +1298,8 @@
    "h": 128,
    "cellsX": 3,
    "cellsY": 4,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000111"
   },
   {
    "name": "shields_beerhorn",
@@ -1202,7 +1310,8 @@
    "h": 128,
    "cellsX": 2,
    "cellsY": 4,
-   "weight": 2
+   "weight": 2,
+   "pass": "00000011"
   },
   {
    "name": "sun",
@@ -1213,7 +1322,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 1
+   "weight": 1,
+   "pass": "1"
   },
   {
    "name": "tree_white_tall",
@@ -1224,7 +1334,8 @@
    "h": 192,
    "cellsX": 6,
    "cellsY": 6,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000000000000000000000111111"
   },
   {
    "name": "sign_park",
@@ -1235,7 +1346,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "signpost_two",
@@ -1246,7 +1358,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "owl",
@@ -1257,7 +1370,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "flowers_violet",
@@ -1268,7 +1382,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "0011"
   },
   {
    "name": "tree_cypress_dark",
@@ -1279,7 +1394,8 @@
    "h": 192,
    "cellsX": 2,
    "cellsY": 6,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000011"
   },
   {
    "name": "obelisk",
@@ -1290,7 +1406,8 @@
    "h": 256,
    "cellsX": 6,
    "cellsY": 8,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000000000000000000000000000000000111111"
   },
   {
    "name": "leaf_lush",
@@ -1301,7 +1418,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 3
+   "weight": 3,
+   "pass": "1"
   },
   {
    "name": "bird",
@@ -1312,7 +1430,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 2
+   "weight": 2,
+   "pass": "1"
   },
   {
    "name": "log_hollow",
@@ -1323,7 +1442,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "grass",
@@ -1334,7 +1454,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 3
+   "weight": 3,
+   "pass": "1"
   },
   {
    "name": "tree_birch_young",
@@ -1345,7 +1466,8 @@
    "h": 160,
    "cellsX": 2,
    "cellsY": 5,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000011"
   },
   {
    "name": "moss_mounds",
@@ -1356,7 +1478,8 @@
    "h": 64,
    "cellsX": 3,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "000111"
   },
   {
    "name": "bush_mound",
@@ -1367,7 +1490,8 @@
    "h": 96,
    "cellsX": 3,
    "cellsY": 3,
-   "weight": 3
+   "weight": 3,
+   "pass": "000000111"
   },
   {
    "name": "flowers_white",
@@ -1378,7 +1502,8 @@
    "h": 96,
    "cellsX": 2,
    "cellsY": 3,
-   "weight": 3
+   "weight": 3,
+   "pass": "000011"
   },
   {
    "name": "stump_lantern",
@@ -1389,7 +1514,8 @@
    "h": 128,
    "cellsX": 2,
    "cellsY": 4,
-   "weight": 2
+   "weight": 2,
+   "pass": "00000011"
   },
   {
    "name": "tree_twisted",
@@ -1400,7 +1526,8 @@
    "h": 224,
    "cellsX": 4,
    "cellsY": 7,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000000000000000001111"
   },
   {
    "name": "bush_wild",
@@ -1411,7 +1538,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "0011"
   },
   {
    "name": "tree_dead_big",
@@ -1422,7 +1550,8 @@
    "h": 160,
    "cellsX": 4,
    "cellsY": 5,
-   "weight": 1
+   "weight": 1,
+   "pass": "00000000000000001111"
   },
   {
    "name": "tree_pine",
@@ -1433,7 +1562,8 @@
    "h": 160,
    "cellsX": 3,
    "cellsY": 5,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000111"
   },
   {
    "name": "root_arch",
@@ -1444,7 +1574,8 @@
    "h": 128,
    "cellsX": 5,
    "cellsY": 4,
-   "weight": 1
+   "weight": 1,
+   "pass": "00000000000000011111"
   },
   {
    "name": "stump_hollow",
@@ -1455,7 +1586,8 @@
    "h": 96,
    "cellsX": 2,
    "cellsY": 3,
-   "weight": 2
+   "weight": 2,
+   "pass": "000011"
   },
   {
    "name": "tree_small",
@@ -1466,7 +1598,8 @@
    "h": 128,
    "cellsX": 2,
    "cellsY": 4,
-   "weight": 1
+   "weight": 1,
+   "pass": "00000011"
   },
   {
    "name": "log_mushrooms",
@@ -1477,7 +1610,8 @@
    "h": 64,
    "cellsX": 4,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "00001111"
   },
   {
    "name": "fountain_dragon",
@@ -1488,7 +1622,8 @@
    "h": 320,
    "cellsX": 10,
    "cellsY": 10,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001111111111"
   },
   {
    "name": "bench_potions",
@@ -1499,7 +1634,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "stump_wide",
@@ -1510,7 +1646,8 @@
    "h": 64,
    "cellsX": 3,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "000111"
   },
   {
    "name": "fountain_pillar",
@@ -1521,7 +1658,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "log_long",
@@ -1532,7 +1670,8 @@
    "h": 32,
    "cellsX": 4,
    "cellsY": 1,
-   "weight": 2
+   "weight": 2,
+   "pass": "1111"
   },
   {
    "name": "bench_ornate",
@@ -1543,7 +1682,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "root_workshop",
@@ -1554,7 +1694,8 @@
    "h": 160,
    "cellsX": 5,
    "cellsY": 5,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000000000000011111"
   },
   {
    "name": "shields_skull",
@@ -1565,7 +1706,8 @@
    "h": 96,
    "cellsX": 4,
    "cellsY": 3,
-   "weight": 2
+   "weight": 2,
+   "pass": "000000001111"
   },
   {
    "name": "stump_books",
@@ -1576,7 +1718,8 @@
    "h": 64,
    "cellsX": 3,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "000111"
   },
   {
    "name": "root_cauldron",
@@ -1587,7 +1730,8 @@
    "h": 160,
    "cellsX": 6,
    "cellsY": 5,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000000000000000111111"
   },
   {
    "name": "basket_apples",
@@ -1598,7 +1742,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "fox",
@@ -1609,7 +1754,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "0011"
   },
   {
    "name": "tree_white_wide",
@@ -1620,7 +1766,8 @@
    "h": 192,
    "cellsX": 4,
    "cellsY": 6,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000000000001111"
   },
   {
    "name": "tree_redroots",
@@ -1631,7 +1778,8 @@
    "h": 192,
    "cellsX": 6,
    "cellsY": 6,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000000000000000000000111111"
   },
   {
    "name": "candelabrum",
@@ -1642,7 +1790,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "pegasus",
@@ -1653,7 +1802,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "totems_tiki",
@@ -1664,7 +1814,8 @@
    "h": 128,
    "cellsX": 3,
    "cellsY": 4,
-   "weight": 2
+   "weight": 2,
+   "pass": "000000000111"
   },
   {
    "name": "shields_mug",
@@ -1675,7 +1826,8 @@
    "h": 128,
    "cellsX": 2,
    "cellsY": 4,
-   "weight": 2
+   "weight": 2,
+   "pass": "00000011"
   },
   {
    "name": "stone_bench",
@@ -1686,7 +1838,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 1
+   "weight": 1,
+   "pass": "0011"
   },
   {
    "name": "rocks_mound",
@@ -1697,7 +1850,8 @@
    "h": 128,
    "cellsX": 7,
    "cellsY": 4,
-   "weight": 2
+   "weight": 2,
+   "pass": "0000000000000000000001111111"
   },
   {
    "name": "tree_round",
@@ -1708,7 +1862,8 @@
    "h": 256,
    "cellsX": 5,
    "cellsY": 8,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000000000000000000000000000011111"
   },
   {
    "name": "palm_tall",
@@ -1719,7 +1874,8 @@
    "h": 352,
    "cellsX": 8,
    "cellsY": 11,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000000000000000000000000000000000000000000000000000000000000000000000000011111111"
   },
   {
    "name": "rock_big",
@@ -1730,7 +1886,8 @@
    "h": 64,
    "cellsX": 3,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "000111"
   },
   {
    "name": "tree_white_bare",
@@ -1741,7 +1898,8 @@
    "h": 288,
    "cellsX": 10,
    "cellsY": 9,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000000000000000000000000000000000000000000000000000000000000000000000001111111111"
   },
   {
    "name": "tree_bonsai_oak",
@@ -1752,7 +1910,8 @@
    "h": 320,
    "cellsX": 9,
    "cellsY": 10,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000000000000000000000000000000000000000000000000000000000000000000000000111111111"
   },
   {
    "name": "grass_tuft",
@@ -1763,7 +1922,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "0011"
   },
   {
    "name": "rock_small",
@@ -1774,7 +1934,8 @@
    "h": 32,
    "cellsX": 2,
    "cellsY": 1,
-   "weight": 2
+   "weight": 2,
+   "pass": "11"
   },
   {
    "name": "rock_flat",
@@ -1785,7 +1946,8 @@
    "h": 64,
    "cellsX": 3,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "000111"
   },
   {
    "name": "grass_spiky",
@@ -1796,7 +1958,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 3
+   "weight": 3,
+   "pass": "1"
   },
   {
    "name": "tree_bonsai_pine",
@@ -1807,7 +1970,8 @@
    "h": 384,
    "cellsX": 9,
    "cellsY": 12,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000111111111"
   },
   {
    "name": "rocks_wide",
@@ -1818,7 +1982,8 @@
    "h": 128,
    "cellsX": 6,
    "cellsY": 4,
-   "weight": 2
+   "weight": 2,
+   "pass": "000000000000000000111111"
   },
   {
    "name": "tree_cone",
@@ -1829,7 +1994,8 @@
    "h": 256,
    "cellsX": 5,
    "cellsY": 8,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000000000000000000000000000011111"
   },
   {
    "name": "tree_oak_meadow",
@@ -1840,7 +2006,8 @@
    "h": 416,
    "cellsX": 10,
    "cellsY": 13,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001111111111"
   },
   {
    "name": "rocks_pair",
@@ -1851,7 +2018,8 @@
    "h": 96,
    "cellsX": 4,
    "cellsY": 3,
-   "weight": 2
+   "weight": 2,
+   "pass": "000000001111"
   },
   {
    "name": "rock_boulder",
@@ -1862,7 +2030,8 @@
    "h": 64,
    "cellsX": 3,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "000111"
   },
   {
    "name": "tree_bush_tall",
@@ -1873,7 +2042,8 @@
    "h": 256,
    "cellsX": 6,
    "cellsY": 8,
-   "weight": 1
+   "weight": 1,
+   "pass": "000000000000000000000000000000000000000000111111"
   },
   {
    "name": "tree_mint",
@@ -1884,7 +2054,8 @@
    "h": 224,
    "cellsX": 8,
    "cellsY": 7,
-   "weight": 1
+   "weight": 1,
+   "pass": "00000000000000000000000000000000000000000000000011111111"
   },
   {
    "name": "tree_white_crown",
@@ -1895,7 +2066,8 @@
    "h": 224,
    "cellsX": 7,
    "cellsY": 7,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000000000000000000000000000000000001111111"
   },
   {
    "name": "grass_big",
@@ -1906,7 +2078,8 @@
    "h": 96,
    "cellsX": 3,
    "cellsY": 3,
-   "weight": 3
+   "weight": 3,
+   "pass": "000000111"
   },
   {
    "name": "rock_pebble",
@@ -1917,7 +2090,8 @@
    "h": 64,
    "cellsX": 3,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "000111"
   },
   {
    "name": "rock_tiny",
@@ -1928,7 +2102,8 @@
    "h": 32,
    "cellsX": 2,
    "cellsY": 1,
-   "weight": 2
+   "weight": 2,
+   "pass": "11"
   },
   {
    "name": "rocks_two",
@@ -1939,7 +2114,8 @@
    "h": 64,
    "cellsX": 3,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "000111"
   },
   {
    "name": "rocks_pile",
@@ -1950,7 +2126,8 @@
    "h": 96,
    "cellsX": 4,
    "cellsY": 3,
-   "weight": 2
+   "weight": 2,
+   "pass": "000000001111"
   },
   {
    "name": "tree_oak_grove",
@@ -1961,7 +2138,8 @@
    "h": 448,
    "cellsX": 8,
    "cellsY": 14,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011111111"
   },
   {
    "name": "tree_spruce_tall",
@@ -1972,7 +2150,8 @@
    "h": 352,
    "cellsX": 5,
    "cellsY": 11,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000000000000000000000000000000000000000000011111"
   },
   {
    "name": "tree_spruce_fluffy",
@@ -1983,7 +2162,8 @@
    "h": 352,
    "cellsX": 5,
    "cellsY": 11,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000000000000000000000000000000000000000000011111"
   },
   {
    "name": "tree_bare_tall",
@@ -1994,7 +2174,8 @@
    "h": 416,
    "cellsX": 5,
    "cellsY": 13,
-   "weight": 1
+   "weight": 1,
+   "pass": "00000000000000000000000000000000000000000000000000000000000011111"
   },
   {
    "name": "tree_oak_rock",
@@ -2005,7 +2186,8 @@
    "h": 352,
    "cellsX": 10,
    "cellsY": 11,
-   "weight": 1
+   "weight": 1,
+   "pass": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001111111111"
   },
   {
    "name": "rock_gray",
@@ -2016,7 +2198,8 @@
    "h": 64,
    "cellsX": 4,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "00001111"
   },
   {
    "name": "bush_round_big",
@@ -2027,7 +2210,8 @@
    "h": 64,
    "cellsX": 3,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "000111"
   },
   {
    "name": "grass_silver",
@@ -2038,7 +2222,8 @@
    "h": 64,
    "cellsX": 3,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "000111"
   },
   {
    "name": "tree_tall_thicket",
@@ -2049,7 +2234,8 @@
    "h": 352,
    "cellsX": 7,
    "cellsY": 11,
-   "weight": 1
+   "weight": 1,
+   "pass": "00000000000000000000000000000000000000000000000000000000000000000000001111111"
   },
   {
    "name": "rocks_small",
@@ -2060,7 +2246,8 @@
    "h": 32,
    "cellsX": 2,
    "cellsY": 1,
-   "weight": 2
+   "weight": 2,
+   "pass": "11"
   },
   {
    "name": "tree_thicket",
@@ -2071,7 +2258,8 @@
    "h": 352,
    "cellsX": 10,
    "cellsY": 11,
-   "weight": 1
+   "weight": 1,
+   "pass": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001111111111"
   },
   {
    "name": "grass_dark",
@@ -2082,7 +2270,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 3
+   "weight": 3,
+   "pass": "1"
   },
   {
    "name": "tree_bonsai_big",
@@ -2093,7 +2282,8 @@
    "h": 320,
    "cellsX": 10,
    "cellsY": 10,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001111111111"
   },
   {
    "name": "grass_small",
@@ -2104,7 +2294,8 @@
    "h": 32,
    "cellsX": 2,
    "cellsY": 1,
-   "weight": 3
+   "weight": 3,
+   "pass": "11"
   },
   {
    "name": "grass_wild",
@@ -2115,7 +2306,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 3
+   "weight": 3,
+   "pass": "1"
   },
   {
    "name": "tree_bare_bush",
@@ -2126,7 +2318,8 @@
    "h": 256,
    "cellsX": 8,
    "cellsY": 8,
-   "weight": 1
+   "weight": 1,
+   "pass": "0000000000000000000000000000000000000000000000000000000011111111"
   },
   {
    "name": "branch_dry",
@@ -2137,7 +2330,8 @@
    "h": 96,
    "cellsX": 2,
    "cellsY": 3,
-   "weight": 2
+   "weight": 2,
+   "pass": "000011"
   },
   {
    "name": "scrub_low",
@@ -2148,7 +2342,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 3
+   "weight": 3,
+   "pass": "1"
   },
   {
    "name": "sprout_conifer",
@@ -2159,7 +2354,8 @@
    "h": 128,
    "cellsX": 3,
    "cellsY": 4,
-   "weight": 3
+   "weight": 3,
+   "pass": "000000000111"
   },
   {
    "name": "grass_bits",
@@ -2170,7 +2366,8 @@
    "h": 32,
    "cellsX": 2,
    "cellsY": 1,
-   "weight": 3
+   "weight": 3,
+   "pass": "11"
   },
   {
    "name": "grass_tall",
@@ -2181,7 +2378,8 @@
    "h": 96,
    "cellsX": 2,
    "cellsY": 3,
-   "weight": 3
+   "weight": 3,
+   "pass": "000011"
   },
   {
    "name": "sprout_tall",
@@ -2192,7 +2390,8 @@
    "h": 128,
    "cellsX": 3,
    "cellsY": 4,
-   "weight": 3
+   "weight": 3,
+   "pass": "000000000111"
   },
   {
    "name": "rock_gray_big",
@@ -2203,7 +2402,8 @@
    "h": 96,
    "cellsX": 4,
    "cellsY": 3,
-   "weight": 2
+   "weight": 2,
+   "pass": "000000001111"
   },
   {
    "name": "bush_big_round",
@@ -2214,7 +2414,8 @@
    "h": 192,
    "cellsX": 6,
    "cellsY": 6,
-   "weight": 3
+   "weight": 3,
+   "pass": "000000000000000000000000000000111111"
   },
   {
    "name": "rock_mossy",
@@ -2225,7 +2426,8 @@
    "h": 64,
    "cellsX": 4,
    "cellsY": 2,
-   "weight": 2
+   "weight": 2,
+   "pass": "00001111"
   },
   {
    "name": "plant_spiky",
@@ -2236,7 +2438,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "0011"
   },
   {
    "name": "grass_reeds",
@@ -2247,7 +2450,8 @@
    "h": 96,
    "cellsX": 4,
    "cellsY": 3,
-   "weight": 3
+   "weight": 3,
+   "pass": "000000001111"
   },
   {
    "name": "bush_huge",
@@ -2258,7 +2462,8 @@
    "h": 160,
    "cellsX": 7,
    "cellsY": 5,
-   "weight": 3
+   "weight": 3,
+   "pass": "00000000000000000000000000001111111"
   },
   {
    "name": "scrub_brown",
@@ -2269,7 +2474,8 @@
    "h": 96,
    "cellsX": 4,
    "cellsY": 3,
-   "weight": 3
+   "weight": 3,
+   "pass": "000000001111"
   },
   {
    "name": "grass_sprig",
@@ -2280,7 +2486,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 3
+   "weight": 3,
+   "pass": "1"
   },
   {
    "name": "reeds_big",
@@ -2291,7 +2498,8 @@
    "h": 96,
    "cellsX": 4,
    "cellsY": 3,
-   "weight": 3
+   "weight": 3,
+   "pass": "000000001111"
   },
   {
    "name": "bush_mossy_pair",
@@ -2302,7 +2510,8 @@
    "h": 128,
    "cellsX": 8,
    "cellsY": 4,
-   "weight": 3
+   "weight": 3,
+   "pass": "00000000000000000000000011111111"
   },
   {
    "name": "sprout_small",
@@ -2313,7 +2522,8 @@
    "h": 32,
    "cellsX": 1,
    "cellsY": 1,
-   "weight": 3
+   "weight": 3,
+   "pass": "1"
   },
   {
    "name": "rocks_gray_big",
@@ -2324,7 +2534,8 @@
    "h": 128,
    "cellsX": 8,
    "cellsY": 4,
-   "weight": 2
+   "weight": 2,
+   "pass": "00000000000000000000000011111111"
   },
   {
    "name": "rocks_gray_wide",
@@ -2335,7 +2546,8 @@
    "h": 160,
    "cellsX": 8,
    "cellsY": 5,
-   "weight": 2
+   "weight": 2,
+   "pass": "0000000000000000000000000000000011111111"
   },
   {
    "name": "grass_sedge",
@@ -2346,7 +2558,8 @@
    "h": 64,
    "cellsX": 2,
    "cellsY": 2,
-   "weight": 3
+   "weight": 3,
+   "pass": "0011"
   }
  ]
 }

@@ -104,6 +104,16 @@
     aside[data-tab="objects"] .tools-ground { display: none; }
     #objCats { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
     #objCats button { font-size: 11px; padding: 2px 7px; }
+    #passGrid { display: grid; gap: 2px; margin: 6px 0; }
+    .passCell {
+        width: 22px; height: 22px;
+        border: 1px solid #3a414d;
+        border-radius: 3px;
+        background: #2f5a33;
+        cursor: pointer;
+    }
+    .passCell:hover { border-color: #88ffc8; }
+    .passCell.blocked { background: #8a3030; }
     #objPalette {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
@@ -290,6 +300,15 @@
                 выделение: Ctrl+C копия · Ctrl+X вырезать · Del стереть ·<br>
                 Ctrl+V вставить (клик = место) · Esc — отмена · Ctrl+Z/Y — отмена/повтор
             </div>
+            <div class="tab-obj" style="margin-top:10px">
+                <h2>Проходимость <span class="muted small" id="passName"></span></h2>
+                <div id="passGrid"></div>
+                <div class="btnrow">
+                    <button id="btnPassReset" title="нижняя строка непроходима, остальное проходимо">сбросить</button>
+                    <label style="margin-left:6px"><input id="chkPassOverlay" type="checkbox"> на карте</label>
+                </div>
+                <div class="small muted" style="margin-top:6px">красная клетка — непроходима (движок запретит сюда персонажа); клик переключает; по умолчанию непроходим низ объекта</div>
+            </div>
         </section>
         <section class="tab-ground">
             <h2><span>Палитра тайлсета</span> <span class="muted small">(клик → штамп)</span></h2>
@@ -443,7 +462,8 @@ function snapshot() {
             data: l.data.slice() })),
         objects: { density: state.objects.density, avoidHideBg: state.objects.avoidHideBg,
             placements: state.objects.placements.map((p) => p.slice()),
-            weights: objItems.map((it) => it.weight) },
+            weights: objItems.map((it) => it.weight),
+            passes: objItems.map((it) => it.pass) },
     };
 }
 function buildContainer(l) {
@@ -461,6 +481,11 @@ function restore(snap) {
         state.objects = { density: snap.objects.density, avoidHideBg: snap.objects.avoidHideBg,
             placements: snap.objects.placements.map((p) => p.slice()) };
         (snap.objects.weights || []).forEach((wt, i) => { if (objItems[i]) objItems[i].weight = wt; });
+        (snap.objects.passes || []).forEach((ps, i) => {
+            if (objItems[i] && typeof ps === "string" &&
+                ps.length === objItems[i].cellsX * objItems[i].cellsY) objItems[i].pass = ps;
+        });
+        buildPassGrid();
     }
     syncObjects(false);
     rebuildRoot(); refreshAll(); selfTest();
@@ -571,6 +596,21 @@ function drawOverlay() {
             }
         }
     });
+    // непроходимые клетки объектов (галка «на карте» во вкладке Объекты)
+    if (objHolder && document.getElementById("chkPassOverlay").checked) {
+        for (const [t, x, y] of state.objects.placements) {
+            const it = objItems[t];
+            const fp = dual.objectFootprint(it, x, y, TS);
+            for (let cy = 0; cy < it.cellsY; cy++) {
+                for (let cx = 0; cx < it.cellsX; cx++) {
+                    if (it.pass[cy * it.cellsX + cx] !== "1") continue;
+                    const gx = fp.x0 + cx, gy = fp.y0 + cy;
+                    if (gx >= 0 && gy >= 0 && gx < state.w && gy < state.h)
+                        g.rect(gx * TS, gy * TS, TS, TS).fill({ color: 0xff4a3c, alpha: 0.38 });
+                }
+            }
+        }
+    }
     for (let x = 0; x <= state.w; x++) {
         g.moveTo(x * TS, 0).lineTo(x * TS, state.h * TS).stroke({ width: 1, color: 0xffffff, alpha: 0.09 });
     }
@@ -820,9 +860,37 @@ function buildObjPalette() {
     }
     refreshObjPaletteSel();
 }
+const defaultPassString = (cx, cy) => "0".repeat(cx * (cy - 1)) + "1".repeat(cx);
+// сетка проходимости выбранного объекта: клик переключает клетку (1 = непроходимо)
+function buildPassGrid() {
+    const g = document.getElementById("passGrid");
+    g.innerHTML = "";
+    const it = objItems[state.objSel];
+    document.getElementById("passName").textContent = it ? (it.ru + " · " + it.cellsX + "×" + it.cellsY) : "—";
+    if (!it) return;
+    const cs = Math.max(14, Math.min(24, Math.floor(250 / it.cellsX)));
+    g.style.gridTemplateColumns = "repeat(" + it.cellsX + ", " + cs + "px)";
+    for (let r = 0; r < it.cellsY; r++) {
+        for (let c = 0; c < it.cellsX; c++) {
+            const idx = r * it.cellsX + c;
+            const cell = document.createElement("div");
+            cell.className = "passCell" + (it.pass[idx] === "1" ? " blocked" : "");
+            cell.title = "ряд " + (r + 1) + " (сверху), клетка " + (c + 1);
+            cell.onclick = () => {
+                const v = it.pass[idx] === "1" ? "0" : "1";
+                it.pass = it.pass.slice(0, idx) + v + it.pass.slice(idx + 1);
+                cell.classList.toggle("blocked", v === "1");
+                if (document.getElementById("chkPassOverlay").checked) drawOverlay();
+            };
+            g.appendChild(cell);
+        }
+    }
+}
 function refreshObjPaletteSel() {
     const pal = $("objPalette");
-    [...pal.children].forEach((el, i) => el.classList.toggle("sel", i === state.objSel));
+    // палитра может быть отфильтрована/пересортирована — сверяемся по data-i
+    [...pal.children].forEach((el) => el.classList.toggle("sel", Number(el.dataset.i) === state.objSel));
+    buildPassGrid();
 }
 function refreshObjectsPanel() {
     const it = objItems[state.objSel];
@@ -897,7 +965,7 @@ function objectsManifestSpec(embed = false) {
         density: state.objects.density,
         avoidHideBg: state.objects.avoidHideBg,
         items: objItems.map((it) => ({
-            name: it.name, weight: it.weight,
+            name: it.name, weight: it.weight, pass: it.pass,
             ...(embed ? { png: imageToDataURL(it.img) } : {}),
         })),
     };
@@ -1012,6 +1080,8 @@ function applyObjectsSpec(ospec) {
         if (ni === undefined) { missing++; return; }
         remap.set(oldT, ni);
         if (oi.weight != null) objItems[ni].weight = oi.weight;
+        if (typeof oi.pass === "string" && oi.pass.length === objItems[ni].cellsX * objItems[ni].cellsY)
+            objItems[ni].pass = oi.pass;
     });
     if (missing) msg(`предупреждение: ${missing} объектов из файла нет в реестре — пропущены`);
     return remap;
@@ -1149,7 +1219,7 @@ function mapObject(embed = false) {
         })),
         ...(objItems.length ? {
             objects: {
-                items: objItems.map((it) => ({ name: it.name, weight: it.weight })),
+                items: objItems.map((it) => ({ name: it.name, weight: it.weight, pass: it.pass })),
                 placements: state.objects.placements.map((p) => p.slice()),
             },
         } : {}),
@@ -1452,6 +1522,14 @@ $("rngDensity").oninput = (e) => {
     $("densVal").textContent = state.objects.density + "%";
 };
 $("chkAvoidWater").onchange = (e) => { state.objects.avoidHideBg = e.target.checked; };
+$("btnPassReset").onclick = () => {
+    const it = objItems[state.objSel];
+    if (!it) return;
+    it.pass = defaultPassString(it.cellsX, it.cellsY);
+    buildPassGrid();
+    if (document.getElementById("chkPassOverlay").checked) drawOverlay();
+};
+document.getElementById("chkPassOverlay").onchange = () => drawOverlay();
 $("btnGenObjects").onclick = () => generateObjectsOnly();
 $("btnClearObjects").onclick = () => {
     if (!objHolder) return;
@@ -1528,6 +1606,22 @@ window.__MAPEDITOR = {
         setDensity: (v) => { state.objects.density = v; refreshObjectsPanel(); },
         setAvoid: (v) => { state.objects.avoidHideBg = !!v; refreshObjectsPanel(); },
         placements: () => state.objects.placements.map((p) => p.slice()),
+        getPass: (t) => {
+            const it = typeof t === "string" ? objItems.find((o) => o.name === t) : objItems[t];
+            return it ? it.pass : null;
+        },
+        togglePass: (t, r, c) => {
+            const it = typeof t === "string" ? objItems.find((o) => o.name === t) : objItems[t];
+            if (!it) return null;
+            const idx = r * it.cellsX + c;
+            const v = it.pass[idx] === "1" ? "0" : "1";
+            it.pass = it.pass.slice(0, idx) + v + it.pass.slice(idx + 1);
+            buildPassGrid();
+            return v;
+        },
+        collision: () => dual.buildCollisionMap({ w: state.w, h: state.h,
+            items: objHolder.objectsMeta.items,
+            placements: state.objects.placements, ts: TS }),
     },
 };
 
@@ -1555,12 +1649,14 @@ if (window.DUALGRID_OBJECTS) {
         const name = baseName(it.name);
         objItems.push({ name, ru: it.ru || it.name, group: it.group || "deco",
             tex: textureFromImage(img), img, w: it.w, h: it.h,
-            cellsX: it.cellsX, cellsY: it.cellsY, weight: it.weight ?? 1 });
+            cellsX: it.cellsX, cellsY: it.cellsY, weight: it.weight ?? 1,
+            pass: (typeof it.pass === "string" && it.pass.length === it.cellsX * it.cellsY)
+                ? it.pass : defaultPassString(it.cellsX, it.cellsY) });
         textures[name] = objItems[objItems.length - 1].tex;
         images[name] = img;
     }
     objHolder = dual.buildObjects({
-        items: objItems.map((it) => ({ name: it.name, texture: it.tex })),
+        items: objItems.map((it) => ({ name: it.name, texture: it.tex, pass: it.pass })),
         ts: TS, w: state.w, h: state.h,
     });
     window.__MAPEDITOR.objHolder = objHolder; // реестр API создаётся раньше контейнера
