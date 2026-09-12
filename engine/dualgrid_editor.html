@@ -449,10 +449,12 @@ function drawOverlay() {
         }
     });
     g.alpha = 1;
-    // Нарушения зазора: ячейки верхнего слоя ближе margin к «фичам» нижнего слоя
-    // с ДРУГИМ тайлсетом — стык рисуется прямыми срезами спрайтов (красная подсветка)
+    // Срезы спрайтов: ячейка верхнего слоя ВПЛОТНУЮ (дистанция 1) к «фиче» нижнего
+    // слоя с ДРУГИМ тайлсетом — береговой тайл воды перекрывает тайл земли, и контур
+    // местности обрывается прямой. Зазор margin — буфер генерации, подсветка же
+    // отмечает только реальную threatened-дистанцию 1.
     state.layers.forEach((l, i) => {
-        if (!l.visible || !l.margin) return;
+        if (!l.visible) return;
         const blockers = [];
         for (let k = 0; k < i; k++) {
             if (state.layers[k].visible && state.layers[k].name !== l.name) blockers.push(state.layers[k].data);
@@ -460,7 +462,7 @@ function drawOverlay() {
         if (!blockers.length) return;
         let blocked = null;
         for (const b of blockers) {
-            const d = dual.dilateMask(b, state.w, state.h, l.margin);
+            const d = dual.dilateMask(b, state.w, state.h, 1);
             if (!blocked) blocked = d;
             else for (let j = 0; j < blocked.length; j++) blocked[j] = blocked[j] || d[j];
         }
