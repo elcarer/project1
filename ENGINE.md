@@ -312,6 +312,8 @@ dual.update(dirt, newDirtMap);   // регенерация без пересоз
 - **Самопроверка** в статусе: каждый спрайт каждого слоя сверяется с `tileIndex()`
   плюс корректность скрытия фона — 1020/1020 после любых операций. API автоматики —
   `window.__MAPEDITOR` (рисование, буфер, save/load-объекты, undo/redo, selfTest).
+- **UML-диаграмма классов** модуля и редактора: [docs/dualgrid-editor-uml.md](engine/docs/dualgrid-editor-uml.md)
+  (Mermaid — рендерится прямо на GitHub; таблица соответствия классов и функций кода).
 
 ```js
 // Рантайм: глобальная карта из манифеста (textures уже загружены игрой)
@@ -511,6 +513,12 @@ window.__TEST    // полигон game.js: счёт, health, camera, scheduler,
    береговой тайл воды перекрывает тайл земли; сам зазор — буфер генерации, к подсветке
    не привязан). Проверено: минимальная дистанция земля↔вода ровно margin+1 после
    генерации, нарушения подсвечиваются и исчезают при генерации.
+8. **UML-диаграмма классов** (`engine/docs/dualgrid-editor-uml.md`): модуль (`DualGrid`,
+   форматы `dualgrid-manifest`/`dualgrid-map`, `DualMeta`, `LayerStack`, иерархия слоёв
+   JSON) и редактор (логические компоненты `EditorState`, `Tools`, `History`, `View`,
+   `SceneRenderer`, `LayerManager`, `GeneratorFacade`, `FileManager`, `UIController` —
+   код функциональный, классы = группы функций). Синтаксис обеих диаграмм проверен
+   рендером mermaid@11.
 
 ### Модуль dualgrid — генерация пола (2026-09-12)
 
