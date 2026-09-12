@@ -36,14 +36,23 @@ classDiagram
         +mapFromManifest(manifest, textures) Promise~LayerStack~
         +mapFromJSON(mapJson, textures) Promise~LayerStack~
         +loadTexture(name, embeddedPng, textures) Promise~Texture~
+        +objectFootprint(item, x, y, ts) Rect
+        +generateObjects(w, h, seed, density, items, avoid) List~Placement~
+        +buildObjects(items, ts, w, h) Container
+        +syncObjects(container, placements) Container
+        +placeObject(container, t, x, y) bool
+        +eraseObjectAt(container, cx, cy) Placement
+        +objectAt(container, cx, cy) Placement
         -mulberry32(seed) RNG$
         -hashSeed(text) uint$
         -clampPercent(v) int$
         -clampMargin(v) int$
+        -clampWeight(v) int$
         -buildLookup(layout) int$
         -makeTileTextures(texture) TileSet$
         -cellAt(map, x, y, outside) int$
         -fill(container, meta, map) Container$
+        -makeObjectSprite(meta, p) Sprite$
         -assertFormat(obj, expected, what) void$
         -normalizeMapData(data, w, h, name) Uint8Array$
         -sameLayout(a, b) bool$
@@ -75,8 +84,58 @@ classDiagram
         +Container root
         +List~Container~ layers
         +List~GridMap~ maps
+        +Container objects
         +int w
         +int h
+    }
+
+    class ObjectsMeta {
+        <<container meta>>
+        +List~ObjectItem~ items
+        +List~Placement~ placements
+        +int ts
+        +int w
+        +int h
+    }
+
+    class ObjectItem {
+        <<palette item>>
+        +String name
+        +Texture texture
+        +int w
+        +int h
+        +int cellsX
+        +int cellsY
+    }
+
+    class Placement {
+        <<массив [t, x, y]>>
+        +int t
+        +int x
+        +int y
+    }
+
+    class ObjectsSpec {
+        <<JSON objects base>>
+        +List~ObjectRef~ items
+    }
+
+    class ObjectRef {
+        <<JSON item>>
+        +String name
+        +int weight
+        +String png
+    }
+
+    class ManifestObjects {
+        <<manifest objects>>
+        +int density
+        +bool avoidHideBg
+    }
+
+    class MapObjects {
+        <<map file objects>>
+        +List~Placement~ placements
     }
 
     class LayerSpec {
@@ -121,15 +180,27 @@ classDiagram
     DualGrid ..> DualGridMap : makeMap
     DualGrid ..> LayerStack : mapFromManifest, mapFromJSON
     DualGrid ..> DualMeta : build, update
+    DualGrid ..> ObjectsMeta : buildObjects, syncObjects
+    DualGrid ..> Placement : generateObjects, eraseObjectAt
     DualGridManifest o-- ManifestLayer : layers
     DualGridMap o-- MapLayer : layers
     ManifestLayer --|> LayerSpec
     MapLayer --|> LayerSpec
+    DualGridManifest o-- ManifestObjects : objects
+    DualGridMap o-- MapObjects : objects
+    ManifestObjects --|> ObjectsSpec
+    MapObjects --|> ObjectsSpec
+    ObjectsSpec o-- ObjectRef : items
+    ObjectsMeta o-- ObjectItem : items
+    ObjectsMeta o-- Placement : placements
 
     note for DualGrid "Подключение: script-тег даёт глобальную createDualGrid() (работает и на file://), import — как побочный эффект."
     note for DualGrid "generateMap: fBm value-noise (3 октавы) + квантильный порог — частота в процентах выдерживается точно; scatter меняет шаг решётки шума."
     note for DualGrid "mapFromManifest: зазор margin до нижних слоёв с другим тайлсетом (separateLayer = dilateMask + стирание) и детерминированная компенсация частоты (до 10 итераций)."
+    note for DualGrid "generateObjects: density — процент ячеек с объектом, weight — относительный шанс; ровно 2 вызова RNG на ячейку → смена весов не двигает раскладку. Сид потока: seed:objects; avoid — маска-запрет (в mapFromManifest — фичи слоёв с hideBackground, т.е. вода)."
+    note for Placement "Якорь — нижний центр ячейки (x, y): спрайт стоит основанием на тайле; footprint cellsX×cellsY, при чётной ширине нависает на клетку влево."
     note for DualMeta "Висит на PIXI.Container.dualMeta: по ней update() переиспользует спрайты без пересборки детей."
+    note for ObjectsMeta "Висит на PIXI.Container.objectsMeta; sortableChildren + zIndex=(y+1)·ts — нижние объекты рисуются поверх."
     note for GridMap "Ячейка данных: data[y*w+x] = 1 фича / 0 фон; тайл над (i,j) выбирается по 4 ячейкам вокруг точки (i,j)."
 ```
 
@@ -149,6 +220,12 @@ classDiagram
         +makeManifest()
         +makeMap()
         +mapFromManifest()
+        +generateObjects()
+        +buildObjects()
+        +syncObjects()
+        +placeObject()
+        +eraseObjectAt()
+        +objectFootprint()
         +TILE_CORNERS
     }
 
@@ -161,14 +238,26 @@ classDiagram
         +int bgTile
     }
 
+    class ObjectsMeta {
+        <<container meta>>
+        +List~ObjectItem~ items
+        +List~Placement~ placements
+        +int ts
+        +int w
+        +int h
+    }
+
     class EditorApp {
         <<entry point>>
         +Application app
         +Container root
         +Container gridHolder
         +Container uiHolder
+        +Container objHolder
         +Map textures
         +Map images
+        +List objItems
+        +Objects DUALGRID_OBJECTS
         -Map EMBEDDED_TILESETS
     }
 
@@ -181,12 +270,22 @@ classDiagram
         +string tool
         +int brushSize
         +int stampTile
+        +string tab
+        +int objSel
         +Rect sel
         +Clipboard clipboard
         +Cell paste
         +List~Snapshot~ undo
         +List~Snapshot~ redo
         +List~EditorLayer~ layers
+        +Objects objects
+    }
+
+    class Objects {
+        <<state.objects>>
+        +int density
+        +bool avoidHideBg
+        +List~Placement~ placements
     }
 
     class EditorLayer {
@@ -218,6 +317,7 @@ classDiagram
         +int seed
         +int active
         +List~EditorLayer~ layers
+        +Objects objects
     }
 
     class Tools {
@@ -302,10 +402,12 @@ classDiagram
     class UIController {
         <<bindings panels>>
         +setTool(tool)$
+        +setTab(tab)$
         +msg(text)$
         +refreshLayersPanel()$
         +refreshLayerProps()$
         +refreshPalette()$
+        +refreshObjectsPanel()$
         +refreshAll()$
         +updateUndoButtons()$
         -onPointerDown()$
@@ -317,32 +419,36 @@ classDiagram
 
     EditorApp *-- "1" EditorState
     EditorState o-- "1..*" EditorLayer : layers
+    EditorState o-- "1" Objects : objects
     EditorState o-- "0..40" Snapshot : undo redo
     EditorState o-- "0..1" Clipboard
     EditorLayer ..> DualMeta : container.dualMeta
+    EditorApp ..> ObjectsMeta : objHolder
+    Objects ..> DualGrid : generateObjects
     Tools ..> EditorLayer : paint erase stamp
     History ..> Snapshot : snapshot restore
     History ..> SceneRenderer : rebuild after restore
     LayerManager ..> EditorState
     GeneratorFacade ..> EditorState : reads layers
-    GeneratorFacade ..> DualGrid : makeManifest, mapFromManifest, makeMap
+    GeneratorFacade ..> DualGrid : makeManifest, mapFromManifest, makeMap, generateObjects
     FileManager ..> DualGrid : build on map load
     LayerManager ..> DualGrid : build, detectLayout
-    SceneRenderer ..> DualGrid : update, dilateMask, tileIndex
+    SceneRenderer ..> DualGrid : update, dilateMask, tileIndex, syncObjects
     UIController ..> Tools : mouse keyboard
     UIController ..> History : Ctrl+Z Ctrl+Y
     UIController ..> LayerManager : layers panel, map size
-    UIController ..> GeneratorFacade : generate button
+    UIController ..> GeneratorFacade : generate buttons
     UIController ..> FileManager : open save buttons
     UIController ..> SceneRenderer : redraw overlays
     View ..> EditorApp : canvas and root
 
-    note for EditorApp "Классический script с async-обёрткой: на file:// ES-модули заблокированы. EMBEDDED_TILESETS — вшитые data-URL тайлсетов: дисковая картинка под file:// — чужой origin для WebGL."
-    note for EditorApp "Стек PIXI: Application → stage → root (контейнеры слоёв) → gridHolder (сетка, данные, красная подсветка) → uiHolder (выделение, вставка, курсор)."
+    note for EditorApp "Классический script с async-обёрткой: на file:// ES-модули заблокированы. EMBEDDED_TILESETS — вшитые data-URL тайлсетов: дисковая картинка под file:// — чужой origin для WebGL. Реестр объектов — images/objects/objects_data.js через script-тег (data-URL WebP)."
+    note for EditorApp "Стек PIXI: Application → stage → root (контейнеры слоёв, objHolder объектов) → gridHolder (сетка, данные, красная подсветка) → uiHolder (выделение, вставка, курсор)."
     note for EditorState "Один мутируемый объект. restore() пересоздаёт массив layers — замыкания на старые слои после undo устаревают (известная ловушка тестов)."
+    note for Objects "tab: Земля/Объекты — переключает панель и набор инструментов (в Объектах только кисть/ластик). Кисть ставит выбранный objSel, ластик стирает верхний по footprint; density/avoidHideBg — параметры генерации."
     note for Tools "paintLine — Брезенхэм; bucket — заливка BFS 4-связности; stamp выставляет 4 ячейки данных под углами тайла из layer.layout."
-    note for SceneRenderer "drawOverlay: красным — ячейка верхнего слоя вплотную (дистанция 1) к фиче нижнего слоя с другим тайлсетом. selfTest сверяет каждый спрайт с tileIndex и видимость фона."
-    note for History "Снимок — полная копия стека слоёв (data.slice()); restore пересобирает контейнеры через build() и обновляет сцену."
+    note for SceneRenderer "drawOverlay: красным — ячейка верхнего слоя вплотную (дистанция 1) к фиче нижнего слоя с другим тайлсетом. selfTest сверяет каждый спрайт с tileIndex, видимость фона и каждый размещённый объект."
+    note for History "Снимок — полная копия стека слоёв (data.slice()), объектов (placements) и весов; restore пересобирает контейнеры через build() и обновляет сцену."
     note for UIController "Собирает события мыши, клавиатуры, контролов и drag-and-drop; после каждого изменения вызывает syncLayers / refreshAll / selfTest."
 ```
 
@@ -351,8 +457,9 @@ classDiagram
 | Класс диаграммы | Где в коде |
 |---|---|
 | `DualGrid` | `createDualGrid()` в `scripts/engine/modules/dualgrid.js` |
-| `EditorApp` | шапка скрипта редактора: PIXI Application, контейнеры `root`/`gridHolder`/`uiHolder`, реестры `textures`/`images`, `EMBEDDED_TILESETS` |
+| `EditorApp` | шапка скрипта редактора: PIXI Application, контейнеры `root`/`gridHolder`/`objHolder`/`uiHolder`, реестры `textures`/`images`/`objItems`, `EMBEDDED_TILESETS`, `DUALGRID_OBJECTS` |
 | `EditorState` | объект `state` |
+| `Objects` | `state.objects` + `state.tab`/`state.objSel` (панель объектов) |
 | `EditorLayer` | элементы `state.layers` (структура описана рядом с объявлением) |
 | `Tools` | блок «УТИЛИТЫ ДАННЫХ» (`setCell`…`stamp`) + блок «ВЫДЕЛЕНИЕ» (`normSel`…`applyPaste`) |
 | `History` | блок «UNDO / REDO» (`snapshot`, `restore`, `pushUndo`, `undo`, `redo`) |
@@ -363,12 +470,20 @@ classDiagram
 | `FileManager` | «ЗАГРУЗКА JSON» + «СОХРАНЕНИЕ» + `exportPNG` |
 | `UIController` | блоки «МЫШЬ», «КЛАВИАТУРА», «ПРИВЯЗКА КОНТРОЛОВ», drag&drop + функции `refresh*`, `setTool`, `msg` |
 | `Snapshot` / `Clipboard` | объекты `state.undo[i]` / `state.clipboard` |
+| `Placement` | элементы `state.objects.placements` — массивы `[t, x, y]` |
 
 ## 4. Ключевые сценарии (кто кого вызывает)
 
 - **Генерация по манифесту:** UIController (кнопка «🎲») → `GeneratorFacade.generateAll` →
   `DualGrid.mapFromManifest` (на каждый слой: `generateMap` → `separateLayer`/`dilateMask`
-  с компенсацией частоты → `build`) → `SceneRenderer.rebuildRoot` + `selfTest`.
+  с компенсацией частоты → `build`; затем `generateObjects` с avoid-маской воды →
+  `buildObjects`/`syncObjects`) → `SceneRenderer.rebuildRoot` + `selfTest`.
+- **Раскладка только объектов:** UIController (вкладка «Объекты», «🎲 Объекты») →
+  `GeneratorFacade.generateObjectsOnly` → `DualGrid.generateObjects` (сид `seed:objects`,
+  плотность и веса из панели) → `syncObjects` + `selfTest`.
+- **Постановка кистью:** UIController (pointerdown, вкладка «Объекты») →
+  `DualGrid.placeObject` (footprint должен влезать в карту) → `selfTest`; ластик —
+  `eraseObjectAt` (верхний объект, чей footprint накрывает ячейку).
 - **Сохранение:** `GeneratorFacade.manifestObject` / `mapObject` → `DualGrid.makeManifest` /
   `makeMap` → `FileManager.downloadBlob` (скачивание через браузер).
 - **Загрузка файла карты:** `FileManager.openJsonFiles` → `applyMapFile` →

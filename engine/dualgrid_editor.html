@@ -96,6 +96,36 @@
         background: #14161b;
     }
     #palette canvas.sel { border-color: #ffd24a; }
+    /* Вкладки «Земля / Объекты» */
+    #tabs { display: flex; gap: 6px; }
+    #tabs button { flex: 1; font-size: 14px; }
+    aside[data-tab="ground"] section.tab-obj { display: none; }
+    aside[data-tab="objects"] section.tab-ground { display: none; }
+    aside[data-tab="objects"] .tools-ground { display: none; }
+    #objCats { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+    #objCats button { font-size: 11px; padding: 2px 7px; }
+    #objPalette {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 5px;
+        max-height: 300px;
+        overflow-y: auto;
+        padding-right: 2px;
+    }
+    #objPalette .objItem {
+        height: 64px;
+        border: 2px solid #2a2e37;
+        border-radius: 4px;
+        background: #14161b;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+    #objPalette .objItem:hover { border-color: #3d4453; }
+    #objPalette .objItem.sel { border-color: #ffd24a; }
+    #objPalette canvas { image-rendering: pixelated; max-width: 56px; max-height: 56px; }
     #wrap { flex: 1; position: relative; min-width: 0; background: #10131a; }
     #wrap canvas { display: block; }
     footer {
@@ -118,6 +148,8 @@
      это работает и по двойному клику (file://), без сервера -->
 <script src="./dll/pixi.min.js"></script>
 <script src="./scripts/engine/modules/dualgrid.js"></script>
+<!-- Реестр объектов (data-URL внутри — работает и на file://, как и вшитые тайлсеты) -->
+<script src="./images/objects/objects_data.js"></script>
 <script>
 // ДИАГНОСТИКА «Unsafe attempt to load URL»: страница сама таких загрузок не делает.
 // Ловим любого, кто вставляет в DOM или прописывает элементу пустой/страничный URL
@@ -184,8 +216,12 @@
     </div>
 </header>
 <main>
-    <aside>
-        <section>
+    <aside data-tab="ground">
+        <div id="tabs">
+            <button id="tabGround" class="active" title="слои пола (тайлсеты)">🟩 Земля</button>
+            <button id="tabObjects" title="слой объектов поверх пола: деревья, кусты, постройки">🌳 Объекты</button>
+        </div>
+        <section class="tab-ground">
             <h2>Слои (снизу вверх)</h2>
             <ul id="layersUl"></ul>
             <div class="btnrow">
@@ -195,7 +231,7 @@
                 <button id="btnLayerDown" title="опустить слой">↓</button>
             </div>
         </section>
-        <section>
+        <section class="tab-ground">
             <h2>Активный слой: <span id="layerName" class="muted">—</span></h2>
             <label class="lbl">частота «фичи» <span class="val" id="freqVal"></span>
                 <input id="rngFreq" type="range" min="0" max="100" value="30">
@@ -218,14 +254,31 @@
                 <button id="btnInvertLayer">инверт</button>
             </div>
         </section>
+        <section class="tab-obj">
+            <h2>Объекты <span class="muted small" id="objCount"></span></h2>
+            <div id="objCats"></div>
+            <div id="objPalette"></div>
+            <label class="lbl" title="относительный шанс объекта при генерации; 0 — никогда">вес выбранного <span class="val" id="objWeightVal"></span>
+                <input id="rngObjWeight" type="range" min="0" max="10" value="2">
+            </label>
+            <label class="lbl" title="процент ячеек карты, получающих объект">плотность <span class="val" id="densVal"></span>
+                <input id="rngDensity" type="range" min="0" max="100" value="12">
+            </label>
+            <label style="margin-top:8px" title="объекты не ставятся на «фичи» слоёв с включённым «скрывать фон» (обычно вода)"><input id="chkAvoidWater" type="checkbox" checked> не ставить на воду</label>
+            <div class="btnrow">
+                <button id="btnGenObjects" title="разложить объекты заново (сид общий с полом)">🎲 Объекты</button>
+                <button id="btnClearObjects" title="снять все объекты с карты">🗑 убрать все</button>
+            </div>
+            <div class="small muted" style="margin-top:8px">кисть ставит выбранный объект (якорь — низ-центр ячейки), ластик стирает; у генерации footprint объектов не пересекается</div>
+        </section>
         <section>
             <h2>Инструменты</h2>
             <div class="btnrow wrap" id="tools" style="margin-top:0">
                 <button data-tool="brush" class="active">✏ Кисть (B)</button>
                 <button data-tool="eraser">🧽 Ластик (E)</button>
-                <button data-tool="bucket">🪣 Заливка (F)</button>
-                <button data-tool="select">⬚ Выделение (R)</button>
-                <button data-tool="stamp">🏷 Штамп (T)</button>
+                <button data-tool="bucket" class="tools-ground">🪣 Заливка (F)</button>
+                <button data-tool="select" class="tools-ground">⬚ Выделение (R)</button>
+                <button data-tool="stamp" class="tools-ground">🏷 Штамп (T)</button>
             </div>
             <label style="margin-top:8px">размер кисти: <select id="selBrush">
                 <option value="1">1×1</option>
@@ -238,7 +291,7 @@
                 Ctrl+V вставить (клик = место) · Esc — отмена · Ctrl+Z/Y — отмена/повтор
             </div>
         </section>
-        <section>
+        <section class="tab-ground">
             <h2><span>Палитра тайлсета</span> <span class="muted small">(клик → штамп)</span></h2>
             <div id="palette"></div>
         </section>
@@ -255,7 +308,7 @@
 <script>
 (async () => {   // классический скрипт с обёрткой — работает и на file:// (модули там заблокированы)
 
-console.log("dualgrid_editor: v3 — data-URL тайлсеты, FileReader, без fetch (2026-09-12)");
+console.log("dualgrid_editor: v4 — слой объектов: вкладки Земля/Объекты, палитра, вес/плотность, форматы v2 (2026-09-13)");
 
 const TS = 32;                    // размер тайла (и ячейки данных) в пикселях мира
 const dual = createDualGrid();    // глобальная из modules/dualgrid.js
@@ -276,9 +329,14 @@ const state = {
     clipboard: null,       // { w, h, data: [Uint8Array, ...] по слоям }
     paste: null,           // { i, j } — режим вставки
     undo: [], redo: [],
+    tab: "ground",         // «Земля» | «Объекты»
+    objSel: 0,             // выбранный объект палитры (индекс)
+    objects: { density: 12, avoidHideBg: true, placements: [] },  // [[t, x, y], …]
 };
 const textures = {};       // реестр: "имя.png" → PIXI.Texture (для JSON-загрузки)
 const images = {};         // реестр: "имя.png" → Image|ImageBitmap (палитра/детект)
+const objItems = [];       // объекты из реестра: { name, ru, group, tex, img, w, h, cellsX, cellsY, weight }
+let objHolder = null;      // контейнер объектов (dual.buildObjects), создаётся при загрузке реестра
 const view = { scale: 2, ox: 0, oy: 0 };
 
 const activeLayer = () => state.layers[state.active] || null;
@@ -375,7 +433,7 @@ function stamp(l, i, j, tile) {
     setCell(l, i,     j,     br);
 }
 
-// ── UNDO / REDO (полный снимок стека слоёв) ──────────────────────────────────
+// ── UNDO / REDO (полный снимок стека слоёв + объекты) ─────────────────────────
 function snapshot() {
     return {
         w: state.w, h: state.h, seed: state.seed, active: state.active,
@@ -383,6 +441,9 @@ function snapshot() {
             frequency: l.frequency, scatter: l.scatter, margin: l.margin, outside: l.outside,
             hideBackground: l.hideBackground, visible: l.visible, layout: l.layout,
             data: l.data.slice() })),
+        objects: { density: state.objects.density, avoidHideBg: state.objects.avoidHideBg,
+            placements: state.objects.placements.map((p) => p.slice()),
+            weights: objItems.map((it) => it.weight) },
     };
 }
 function buildContainer(l) {
@@ -396,6 +457,12 @@ function restore(snap) {
     state.active = Math.min(snap.active, snap.layers.length - 1);
     state.sel = null; state.paste = null;
     state.layers = snap.layers.map((s) => ({ ...s, data: s.data.slice(), container: buildContainer(s) }));
+    if (snap.objects) {
+        state.objects = { density: snap.objects.density, avoidHideBg: snap.objects.avoidHideBg,
+            placements: snap.objects.placements.map((p) => p.slice()) };
+        (snap.objects.weights || []).forEach((wt, i) => { if (objItems[i]) objItems[i].weight = wt; });
+    }
+    syncObjects(false);
     rebuildRoot(); refreshAll(); selfTest();
 }
 function pushUndo() {
@@ -427,12 +494,44 @@ function updateUndoButtons() {
 function rebuildRoot() {
     root.removeChildren();
     state.layers.forEach((l) => root.addChild(l.container));
+    if (objHolder) root.addChild(objHolder);
     root.addChild(gridHolder, uiHolder);
 }
 // После правок данных: обновить контейнеры слоёв + оверлеи + тест
 function syncLayers(list = state.layers, runTest = true) {
     for (const l of list) dual.update(l.container, mapOf(l), { outside: l.outside, layout: l.layout });
     drawOverlay(); drawUI();
+    if (runTest) selfTest();
+}
+
+// ── ОБЪЕКТЫ: ПОСТАВИТЬ / СТЕРЕТЬ / СИНХРОНИЗИРОВАТЬ ──────────────────────────
+// Ручная постановка прижимает большой объект внутрь карты (иначе у верхнего
+// края высокие деревья молча не ставились бы).
+function objClamp(t, i, j) {
+    const it = objItems[t];
+    const lo = Math.floor(it.cellsX / 2);
+    const x = Math.max(lo, Math.min(i, state.w - it.cellsX + lo));
+    const y = Math.max(it.cellsY - 1, Math.min(j, state.h - 1));
+    return { x, y };
+}
+function objPlaceAt(i, j) {
+    if (!objHolder || !inBounds(i, j) || !objItems.length) return false;
+    const c = objClamp(state.objSel, i, j);
+    if (dual.placeObject(objHolder, state.objSel, c.x, c.y)) {
+        state.objects.placements.push([state.objSel, c.x, c.y]);
+        return true;
+    }
+    return false;
+}
+function objEraseAt(i, j) {
+    if (!objHolder) return;
+    const rem = dual.eraseObjectAt(objHolder, i, j);
+    if (!rem) return;
+    const idx = state.objects.placements.findIndex(([t, x, y]) => t === rem[0] && x === rem[1] && y === rem[2]);
+    if (idx >= 0) state.objects.placements.splice(idx, 1);
+}
+function syncObjects(runTest = true) {
+    if (objHolder) dual.syncObjects(objHolder, state.objects.placements);
     if (runTest) selfTest();
 }
 
@@ -520,7 +619,24 @@ function drawUI() {
     }
     // Курсор кисти / штампа
     if (hover && ["brush", "eraser", "bucket", "stamp"].includes(state.tool)) {
-        if (state.tool === "stamp") {
+        if (state.tab === "objects") {
+            // вкладка объектов: призрак выбранного объекта / рамка ластика
+            const it = objItems[state.objSel];
+            if (state.tool === "eraser" || !it) {
+                const g = new PIXI.Graphics();
+                g.rect(hover.i * TS, hover.j * TS, TS, TS)
+                    .stroke({ width: lw, color: 0xff6a5e, alpha: 0.9 });
+                uiHolder.addChild(g);
+            } else {
+                if (!it._ghostTex) it._ghostTex = it.tex;
+                const c = objClamp(state.objSel, hover.i, hover.j);
+                const sp = new PIXI.Sprite(it._ghostTex);
+                sp.anchor.set(0.5, 1);
+                sp.alpha = 0.55;
+                sp.position.set((c.x + 0.5) * TS, (c.y + 1) * TS);
+                uiHolder.addChild(sp);
+            }
+        } else if (state.tool === "stamp") {
             const l = activeLayer();
             if (l && images[l.name]) {
                 const key = `${l.name}:${state.stampTile}`;
@@ -552,7 +668,7 @@ function drawUI() {
     }
 }
 
-// ── SELF-TEST: каждый спрайт против tileIndex (+ видимость фона) ─────────────
+// ── SELF-TEST: каждый спрайт против tileIndex (+ видимость фона, слой объектов) ──
 function selfTest() {
     let total = 0, ok = 0;
     for (const l of state.layers) {
@@ -568,7 +684,20 @@ function selfTest() {
             if (tileOk && visOk) ok++;
         }
     }
-    $("stTest").textContent = `тест ${ok}/${total} · карта ${state.w}×${state.h} · слоёв ${state.layers.length} · сид ${state.seed}`;
+    // слой объектов: спрайт на месте, в родителе, якорь в ячейке
+    if (objHolder) {
+        const meta = objHolder.objectsMeta;
+        for (const p of meta.placements) {
+            total++;
+            const it = meta.items[p.t];
+            const posOk = p.sprite && p.sprite.parent === objHolder &&
+                p.sprite.x === (p.x + 0.5) * meta.ts && p.sprite.y === (p.y + 1) * meta.ts &&
+                p.sprite.texture === it.texture;
+            if (posOk) ok++;
+        }
+    }
+    $("stTest").textContent = `тест ${ok}/${total} · карта ${state.w}×${state.h} · слоёв ${state.layers.length}` +
+        ` · объектов ${state.objects.placements.length} · сид ${state.seed}`;
     return { ok, total };
 }
 
@@ -637,6 +766,76 @@ function refreshPalette() {
         pal.appendChild(cv);
     }
 }
+// ── UI: ОБЪЕКТЫ (палитра строится один раз, дальше — только подсветка/слайдеры) ──
+// Категории-кнопки: group-ы объектов → кнопка фильтра; палитра сортируется по категории
+const OBJ_CATS = [
+    ["all", "Все", null],
+    ["trees", "Деревья", ["trees"]],
+    ["plants", "Растения", ["bushes", "plants", "water"]],
+    ["stones", "Камни", ["stones"]],
+    ["buildings", "Строения", ["buildings", "craft"]],
+    ["furniture", "Мебель", ["furniture"]],
+    ["deco", "Предметы", ["deco"]],
+    ["magic", "Магия", ["magic", "gems"]],
+];
+const catOrder = (group) => {
+    const i = OBJ_CATS.findIndex((c) => c[2] && c[2].includes(group));
+    return i < 0 ? OBJ_CATS.length : i;
+};
+function buildObjCats() {
+    const box = $("objCats");
+    box.innerHTML = "";
+    for (const [key, label, groups] of OBJ_CATS) {
+        const n = groups ? objItems.filter((it) => groups.includes(it.group)).length : objItems.length;
+        const b = document.createElement("button");
+        b.textContent = `${label} ${n}`;
+        b.classList.toggle("active", state.objCat === key);
+        b.onclick = () => { state.objCat = key; buildObjCats(); buildObjPalette(); };
+        box.appendChild(b);
+    }
+}
+function buildObjPalette() {
+    const pal = $("objPalette");
+    pal.innerHTML = "";
+    const cat = OBJ_CATS.find((c) => c[0] === state.objCat) || OBJ_CATS[0];
+    const order = objItems.map((it, i) => i)
+        .filter((i) => !cat[2] || cat[2].includes(objItems[i].group))
+        .sort((a, b) => (catOrder(objItems[a].group) - catOrder(objItems[b].group)) || (a - b));
+    for (const i of order) {
+        const it = objItems[i];
+        const div = document.createElement("div");
+        div.className = "objItem";
+        div.dataset.i = i;
+        div.title = `${it.ru} · ${it.name} (${it.w}×${it.h})`;
+        const cv = document.createElement("canvas");
+        const s = Math.min(56 / it.w, 56 / it.h, 1);
+        cv.width = Math.max(1, Math.round(it.w * s));
+        cv.height = Math.max(1, Math.round(it.h * s));
+        const ctx = cv.getContext("2d");
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(it.img, 0, 0, cv.width, cv.height);
+        div.appendChild(cv);
+        div.onclick = () => { state.objSel = i; if (state.tool === "eraser") setTool("brush"); refreshObjPaletteSel(); };
+        pal.appendChild(div);
+    }
+    refreshObjPaletteSel();
+}
+function refreshObjPaletteSel() {
+    const pal = $("objPalette");
+    [...pal.children].forEach((el, i) => el.classList.toggle("sel", i === state.objSel));
+}
+function refreshObjectsPanel() {
+    const it = objItems[state.objSel];
+    $("objCount").textContent = objItems.length
+        ? `(${objItems.length} · на карте ${state.objects.placements.length})` : "(реестр не найден)";
+    $("rngObjWeight").disabled = $("rngDensity").disabled = $("chkAvoidWater").disabled =
+        $("btnGenObjects").disabled = $("btnClearObjects").disabled = !it;
+    if (it) { $("rngObjWeight").value = it.weight; $("objWeightVal").textContent = it.weight; }
+    $("rngDensity").value = state.objects.density;
+    $("densVal").textContent = state.objects.density + "%";
+    $("chkAvoidWater").checked = state.objects.avoidHideBg;
+    refreshObjPaletteSel();
+}
 function refreshAll() {
     $("inpW").value = state.w;
     $("inpH").value = state.h;
@@ -644,6 +843,7 @@ function refreshAll() {
     refreshLayersPanel();
     refreshLayerProps();
     refreshPalette();
+    refreshObjectsPanel();
     drawOverlay();
     drawUI();
     updateUndoButtons();
@@ -691,6 +891,17 @@ function moveLayer(dir) {
 }
 
 // ── ГЕНЕРАЦИЯ ПО МАНИФЕСТУ ───────────────────────────────────────────────────
+function objectsManifestSpec(embed = false) {
+    if (!objItems.length) return null;
+    return {
+        density: state.objects.density,
+        avoidHideBg: state.objects.avoidHideBg,
+        items: objItems.map((it) => ({
+            name: it.name, weight: it.weight,
+            ...(embed ? { png: imageToDataURL(it.img) } : {}),
+        })),
+    };
+}
 function manifestObject(embed = false) {
     return dual.makeManifest({
         width: state.w, height: state.h, seed: state.seed,
@@ -699,7 +910,32 @@ function manifestObject(embed = false) {
             outside: l.outside, hideBackground: l.hideBackground, layout: l.layout,
             ...(embed && images[l.name] ? { png: imageToDataURL(images[l.name]) } : {}),
         })),
+        ...(objItems.length ? { objects: objectsManifestSpec(embed) } : {}),
     });
+}
+// Маска «не ставить объекты»: объединение «фич» слоёв с hideBackground (вода)
+function avoidMask() {
+    if (!state.objects.avoidHideBg) return null;
+    let avoid = null;
+    for (const l of state.layers) {
+        if (!l.hideBackground) continue;
+        if (!avoid) avoid = Uint8Array.from(l.data);
+        else for (let q = 0; q < avoid.length; q++) avoid[q] = avoid[q] || l.data[q];
+    }
+    return avoid;
+}
+function generateObjectsOnly(withUndo = true) {
+    if (!objHolder || !objItems.length) { msg("реестр объектов не загружен"); return; }
+    if (withUndo) pushUndo();
+    state.objects.placements = dual.generateObjects({
+        w: state.w, h: state.h, seed: `${state.seed}:objects`,
+        density: state.objects.density,
+        items: objItems.map((it) => ({ weight: it.weight, cellsX: it.cellsX, cellsY: it.cellsY })),
+        avoid: avoidMask(),
+    });
+    syncObjects();
+    refreshObjectsPanel();
+    msg(`объекты разложены: ${state.objects.placements.length} шт. (плотность ${state.objects.density}%)`);
 }
 async function generateAll(withUndo = true) {
     const l = activeLayer();
@@ -714,14 +950,20 @@ async function generateAll(withUndo = true) {
             container.visible = layer.visible;
             layer.data = res.maps[i].data;
         });
+        // раскладку объектов берём из результата (индексы совпадают: порядок тот же)
+        if (res.objects) {
+            state.objects.placements = res.objects.objectsMeta.placements.map((p) => [p.t, p.x, p.y]);
+            res.objects.destroy({ children: true });
+        } else state.objects.placements = [];
     } catch (err) {
         if (withUndo) { state.undo.pop(); updateUndoButtons(); }
         msg("ошибка генерации: " + err.message);
         return;
     }
     state.sel = null; state.paste = null;
+    syncObjects(false);
     rebuildRoot(); refreshAll(); selfTest();
-    msg("сгенерировано по манифесту (частота/разброс, зазор между разными тайлсетами)");
+    msg("сгенерировано по манифесту (пол и объекты)");
 }
 
 // ── ЗАГРУЗКА JSON (манифест | файл карты) ────────────────────────────────────
@@ -757,6 +999,23 @@ async function resolveTexture(name, embeddedPng) {
     }
     throw new Error(`текстура «${name}» не найдена — откройте её png (кнопка «📂 Тайлсеты…»)`);
 }
+// Параметры объектов из файла: плотность/флаги + веса по именам. Возвращает
+// перемаппинг «индекс в файле → индекс реестра» для placements файла карты.
+function applyObjectsSpec(ospec) {
+    state.objects.density = ospec.density ?? state.objects.density;
+    state.objects.avoidHideBg = ospec.avoidHideBg !== false;
+    const idxByName = new Map(objItems.map((it, i) => [it.name, i]));
+    const remap = new Map();
+    let missing = 0;
+    (ospec.items || []).forEach((oi, oldT) => {
+        const ni = idxByName.get(baseName(oi.name));
+        if (ni === undefined) { missing++; return; }
+        remap.set(oldT, ni);
+        if (oi.weight != null) objItems[ni].weight = oi.weight;
+    });
+    if (missing) msg(`предупреждение: ${missing} объектов из файла нет в реестре — пропущены`);
+    return remap;
+}
 async function applyManifest(obj) {
     pushUndo();
     try {
@@ -774,8 +1033,9 @@ async function applyManifest(obj) {
         }
         state.layers = newLayers;
         state.active = 0;
+        if (obj.objects) applyObjectsSpec(obj.objects);
     } catch (err) { state.undo.pop(); updateUndoButtons(); msg("ошибка: " + err.message); return; }
-    await generateAll(false);   // строим контейнеры по параметрам манифеста
+    await generateAll(false);   // строим контейнеры по параметрам манифеста (и объекты)
     fitView();
     msg("манифест загружен и сгенерирован");
 }
@@ -803,7 +1063,15 @@ async function applyMapFile(obj) {
         state.layers = newLayers;
         state.active = 0;
         state.sel = null; state.paste = null;
+        // готовые раскладки объектов: перемаппинг по именам (реестр мог меняться)
+        if (obj.objects) {
+            const remap = applyObjectsSpec(obj.objects);
+            state.objects.placements = (obj.objects.placements || [])
+                .map(([t, x, y]) => remap.has(t) ? [remap.get(t), x, y] : null)
+                .filter(Boolean);
+        } else state.objects.placements = [];
     } catch (err) { state.undo.pop(); updateUndoButtons(); msg("ошибка: " + err.message); return; }
+    syncObjects(false);
     rebuildRoot(); refreshAll(); selfTest(); fitView();
     msg("файл карты загружен (без генерации)");
 }
@@ -879,12 +1147,22 @@ function mapObject(embed = false) {
             hideBackground: l.hideBackground, layout: l.layout,
             ...(embed && images[l.name] ? { png: imageToDataURL(images[l.name]) } : {}),
         })),
+        ...(objItems.length ? {
+            objects: {
+                items: objItems.map((it) => ({ name: it.name, weight: it.weight })),
+                placements: state.objects.placements.map((p) => p.slice()),
+            },
+        } : {}),
     });
 }
 function exportPNG() {
     gridHolder.visible = false; uiHolder.visible = false;
+    // экспорт в мировых координатах: на время рендера снимаем пан/зум вида
+    const ox = root.x, oy = root.y, sc = root.scale.x;
+    root.position.set(0, 0); root.scale.set(1);
     const rt = PIXI.RenderTexture.create({ width: state.w * TS, height: state.h * TS, resolution: 1 });
     app.renderer.render({ container: root, target: rt, clear: true });
+    root.position.set(ox, oy); root.scale.set(sc);
     gridHolder.visible = true; uiHolder.visible = true;
     const canvas = app.renderer.extract.canvas(rt);
     rt.destroy(true);
@@ -907,6 +1185,13 @@ function resizeMap(nw, nh) {
         dual.update(l.container, { w: nw, h: nh, data: nd }, { outside: l.outside, layout: l.layout });
     }
     state.w = nw; state.h = nh;
+    if (objHolder) { objHolder.objectsMeta.w = nw; objHolder.objectsMeta.h = nh; }
+    // объекты, не влезающие в новый размер (весь footprint), снимаются
+    state.objects.placements = state.objects.placements.filter(([t, x, y]) => {
+        const fp = dual.objectFootprint(objItems[t], x, y, TS);
+        return fp.x0 >= 0 && fp.y0 >= 0 && fp.x1 < nw && fp.y1 < nh;
+    });
+    syncObjects(false);
     state.sel = null; state.paste = null;
     refreshAll(); selfTest();
     msg(`размер карты: ${nw}×${nh}`);
@@ -914,10 +1199,12 @@ function resizeMap(nw, nh) {
 function newMap() {
     pushUndo();
     for (const l of state.layers) l.data.fill(0);
+    state.objects.placements.length = 0;
+    syncObjects(false);
     state.sel = null; state.paste = null; state.clipboard = null;
     syncLayers();
     refreshAll();
-    msg("новая карта: данные всех слоёв очищены");
+    msg("новая карта: данные слоёв и объекты очищены");
 }
 
 // ── ВЫДЕЛЕНИЕ: КОПИЯ / ВЫРЕЗАТЬ / СТЕРЕТЬ / ВСТАВИТЬ ─────────────────────────
@@ -992,6 +1279,13 @@ canvas.addEventListener("pointerdown", (e) => {
     }
     if (e.button !== 0) return;
     if (state.paste) { applyPaste(pt.i, pt.j); return; }
+    if (state.tab === "objects") {
+        pushUndo();
+        if (state.tool === "eraser") objEraseAt(pt.i, pt.j);
+        else objPlaceAt(pt.i, pt.j);
+        drag = { mode: "obj", li: pt.i, lj: pt.j };
+        return;
+    }
     const l = activeLayer();
     if (!l) return;
     switch (state.tool) {
@@ -1035,6 +1329,12 @@ canvas.addEventListener("pointermove", (e) => {
         paintLine(l, drag.li, drag.lj, pt.i, pt.j, state.tool === "brush" ? 1 : 0);
         drag.li = pt.i; drag.lj = pt.j;
         syncLayers([l], false);
+    } else if (drag.mode === "obj") {
+        if (pt.i !== drag.li || pt.j !== drag.lj) {
+            drag.li = pt.i; drag.lj = pt.j;
+            if (state.tool === "eraser") objEraseAt(pt.i, pt.j);
+            else objPlaceAt(pt.i, pt.j);
+        }
     } else if (drag.mode === "select") {
         state.sel.x1 = pt.i; state.sel.y1 = pt.j;
         drawUI();
@@ -1045,7 +1345,7 @@ canvas.addEventListener("pointerup", () => {
         if (!normSel()) state.sel = null;
         drawUI();
     }
-    if (drag && drag.mode === "paint") selfTest(); // сверка после штриха
+    if (drag && (drag.mode === "paint" || drag.mode === "obj")) selfTest(); // сверка после штриха
     drag = null;
 });
 canvas.addEventListener("wheel", (e) => {
@@ -1090,10 +1390,23 @@ window.addEventListener("keydown", (e) => {
 window.addEventListener("keyup", (e) => { if (e.code === "Space") spaceHeld = false; });
 
 function setTool(tool) {
+    // во вкладке объектов доступны только кисть и ластик
+    if (state.tab === "objects" && !["brush", "eraser"].includes(tool)) return;
     state.tool = tool;
     document.querySelectorAll("#tools button").forEach((b) => b.classList.toggle("active", b.dataset.tool === tool));
-    $("stTool").textContent = TOOL_NAMES[tool];
+    $("stTool").textContent = state.tab === "objects"
+        ? (tool === "eraser" ? "🧽 Ластик (объекты)" : "✏ Кисть (объекты)")
+        : TOOL_NAMES[tool];
     drawUI();
+}
+function setTab(tab) {
+    state.tab = tab;
+    document.querySelector("aside").dataset.tab = tab;
+    $("tabGround").classList.toggle("active", tab === "ground");
+    $("tabObjects").classList.toggle("active", tab === "objects");
+    if (tab === "objects" && !["brush", "eraser"].includes(state.tool)) state.tool = "brush";
+    setTool(state.tool); // обновляет активность кнопок и подпись
+    refreshObjectsPanel();
 }
 
 // ── ПРИВЯЗКА КОНТРОЛОВ ───────────────────────────────────────────────────────
@@ -1126,6 +1439,28 @@ $("btnLayerAdd").onclick = () => {
 $("btnLayerDel").onclick = removeLayer;
 $("btnLayerUp").onclick = () => moveLayer(+1);
 $("btnLayerDown").onclick = () => moveLayer(-1);
+$("tabGround").onclick = () => setTab("ground");
+$("tabObjects").onclick = () => setTab("objects");
+$("rngObjWeight").oninput = (e) => {
+    const it = objItems[state.objSel];
+    if (!it) return;
+    it.weight = Number(e.target.value);
+    $("objWeightVal").textContent = it.weight;
+};
+$("rngDensity").oninput = (e) => {
+    state.objects.density = Number(e.target.value);
+    $("densVal").textContent = state.objects.density + "%";
+};
+$("chkAvoidWater").onchange = (e) => { state.objects.avoidHideBg = e.target.checked; };
+$("btnGenObjects").onclick = () => generateObjectsOnly();
+$("btnClearObjects").onclick = () => {
+    if (!objHolder) return;
+    pushUndo();
+    state.objects.placements.length = 0;
+    syncObjects();
+    refreshObjectsPanel();
+    msg("все объекты сняты");
+};
 $("rngFreq").oninput = (e) => { const l = activeLayer(); if (!l) return; l.frequency = Number(e.target.value); $("freqVal").textContent = l.frequency + "%"; refreshLayersPanel(); };
 $("rngScatter").oninput = (e) => { const l = activeLayer(); if (!l) return; l.scatter = Number(e.target.value); $("scatVal").textContent = l.scatter + "%"; refreshLayersPanel(); };
 $("rngGap").oninput = (e) => { const l = activeLayer(); if (!l) return; l.margin = Number(e.target.value); $("gapVal").textContent = l.margin + " кл"; refreshLayersPanel(); drawOverlay(); };
@@ -1160,8 +1495,8 @@ window.addEventListener("drop", (e) => {
 
 // ── АВТОМАТИЗАЦИЯ (консоль/агент) ────────────────────────────────────────────
 window.__MAPEDITOR = {
-    dual, state, view, textures, images,
-    generateAll, selfTest, resizeMap, newMap, fitView, undo, redo,
+    dual, state, view, textures, images, objItems, objHolder, app,
+    generateAll, generateObjectsOnly, selfTest, resizeMap, newMap, fitView, undo, redo,
     paintCell: (i, j, v = 1) => { const l = activeLayer(); pushUndo(); paintCell(l, i, j, v); syncLayers([l]); },
     stamp: (i, j, tile = state.stampTile) => { const l = activeLayer(); pushUndo(); stamp(l, i, j, tile); syncLayers([l]); },
     bucket: (i, j) => { const l = activeLayer(); pushUndo(); bucket(l, i, j, 1); syncLayers([l]); },
@@ -1169,7 +1504,31 @@ window.__MAPEDITOR = {
     copySel, cutSel, eraseSel, startPaste, applyPaste,
     manifestObject, mapObject, applyManifest, applyMapFile, exportPNG,
     addLayer: (name) => addLayer(name),
-    setTool, msg,
+    setTool, setTab, msg,
+    obj: {
+        select: (i) => { state.objSel = i; refreshObjPaletteSel(); },
+        place: (t, x, y) => {
+            const key = String(t).replace(/\.png$/i, "");
+            const i = objItems.findIndex((it) => it.name === key || it.name === t || it.ru === t);
+            if (i < 0) return false;
+            pushUndo();
+            state.objSel = i;
+            const ok = objPlaceAt(x, y);
+            selfTest();
+            return ok;
+        },
+        erase: (x, y) => { pushUndo(); objEraseAt(x, y); selfTest(); },
+        clear: () => { pushUndo(); state.objects.placements.length = 0; syncObjects(); },
+        generate: () => generateObjectsOnly(),
+        setWeight: (t, w) => {
+            const it = typeof t === "string" ? objItems.find((o) => o.name === t) : objItems[t];
+            if (it) it.weight = w;
+            refreshObjectsPanel();
+        },
+        setDensity: (v) => { state.objects.density = v; refreshObjectsPanel(); },
+        setAvoid: (v) => { state.objects.avoidHideBg = !!v; refreshObjectsPanel(); },
+        placements: () => state.objects.placements.map((p) => p.slice()),
+    },
 };
 
 // ── СТАРТ: реестр тайлсетов + два слоя + генерация по манифесту ──────────────
@@ -1187,6 +1546,29 @@ for (const name of ["grass_dirt.png", "grass_water.png"]) {
     const img = await loadImageEl(src);
     textures[name] = textureFromImage(img);
     images[name] = img;
+}
+// ── РЕЕСТР ОБЪЕКТОВ (images/objects/objects_data.js, <script>-тег в <head>) ──
+// Данные-URL работают и на file:// (картинка с диска там чужой origin для WebGL).
+if (window.DUALGRID_OBJECTS) {
+    for (const it of window.DUALGRID_OBJECTS.items) {
+        const img = await loadImageEl(it.png);
+        const name = baseName(it.name);
+        objItems.push({ name, ru: it.ru || it.name, group: it.group || "deco",
+            tex: textureFromImage(img), img, w: it.w, h: it.h,
+            cellsX: it.cellsX, cellsY: it.cellsY, weight: it.weight ?? 1 });
+        textures[name] = objItems[objItems.length - 1].tex;
+        images[name] = img;
+    }
+    objHolder = dual.buildObjects({
+        items: objItems.map((it) => ({ name: it.name, texture: it.tex })),
+        ts: TS, w: state.w, h: state.h,
+    });
+    window.__MAPEDITOR.objHolder = objHolder; // реестр API создаётся раньше контейнера
+    buildObjCats();
+    buildObjPalette();
+    console.log(`dualgrid_editor: реестр объектов — ${objItems.length} шт.`);
+} else {
+    console.warn("dualgrid_editor: objects_data.js не подключён — слой объектов недоступен");
 }
 addLayer("grass_dirt.png", { frequency: 30, scatter: 55 }, false);
 addLayer("grass_water.png", { frequency: 25, scatter: 40, hideBackground: true }, false);
