@@ -1,7 +1,7 @@
 # Документация движка (engine)
 
 ECS-движок 2D-игры на **PixiJS 8.19** без сборщика и зависимостей (кроме самой PixiJS, подключённой локально).
-Дата последнего обновления: 2026-09-10 (модульное расширение). Бэкап кода до первого рефакторинга: `../engine-backup-before-refactor/`.
+Дата последнего обновления: 2026-09-12 (модуль dualgrid — генерация пола). Бэкап кода до первого рефакторинга: `../engine-backup-before-refactor/`.
 
 ## Как запустить
 
@@ -22,12 +22,16 @@ python nocache-server.py   # отдаёт Cache-Control: no-cache (рекоме�
 engine/
 ├── index.html                  # входная точка: подключает pixi.min.js и game.js (type="module")
 ├── editor.html                 # ПИКСЕЛЬНЫЙ РЕДАКТОР: персонажи 64×64, кадры анимации, экспорт
+├── dualgrid.html               # ДЕМО генерации пола (Dual Grid): карта 30×17, сид, зум, сетка данных
 ├── dll/pixi.min.js             # PixiJS 8.19 (локальная копия, включает AnimatedSprite)
 ├── nocache-server.py           # сервер разработки: no-cache заголовки + POST /save (сохранение PNG)
 ├── images/
 │   ├── bullets/all.png         # спрайтшит пуль 4×32px кадра (используется)
 │   ├── sprites/knight_64.png   # рыцарь 64×64, 4 кадра (нарисован в редакторе)
-│   └── tiles/tile1.png         # тайл (пока не используется)
+│   └── tiles/
+│       ├── grass_dirt.png      # dual-grid тайлсет 4×4 «трава-земля» (32px тайлы)
+│       ├── grass_water.png     # dual-grid тайлсет 4×4 «трава-вода» (32px тайлы)
+│       └── tile1.png           # тайл (пока не используется)
 └── scripts/
     ├── game.js                 # ИГРОВАЯ ЛОГИКА + полигон модулей (движок здесь только вызывается)
     ├── editor.js               # логика пиксельного редактора (window.__EDITOR — API для агента)
@@ -47,6 +51,7 @@ engine/
             ├── assets.js       # загрузка с прогрессом и кэшем; loadCharacter — персонажи редактора
             ├── hud.js          # полоски (с авто-get) и тексты поверх мира, вне камеры
             ├── scenes.js       # конечный автомат состояний: add/go/is, хуки enter/exit/update
+            ├── dualgrid.js     # генерация пола по тайловым картам: Dual Grid System, 4×4 тайла
             └── debug.js        # оверлей FPS/сущностей, визуализация сетки (G) и хитбоксов (H), F3
 ```
 
@@ -184,6 +189,7 @@ app.stage
 | assets | `createAssets()` | `load(urls, onProgress), loadSpritesheet(url,fw,fh), get(url)` |
 | hud | `createHUD({app, addSystem})` | `bar(name,{get}) — автообновление, text(name,str), setText` |
 | scenes | `createScenes({addSystem})` | `add(name,{enter,exit,update}), go(name), is(name), current` |
+| dualgrid | `createDualGrid()` | `build({texture,map,hideBackground}), update(layer,map), tileIndex(map,i,j), detectLayout(tex)` |
 | debug | `createDebug({app, addSystem, world, grid, components, layer, overlayPos})` | оверлей; `info[ключ]=значение`; клавиши F3/G/H |
 
 Паттерн подключения (в `game.js`):
@@ -196,6 +202,42 @@ const camera = createCamera({ app, container: engine.worldContainer, addSystem }
 `addSystem`. Планировщик и ввод — без авто-тика: `scheduler.update(ticker.deltaMS)` вызывается
 в update сцены (поэтому на паузе таймеры стоят), `input.endFrame()` — в конце кадра сцены
 (сброс однокадровых флагов после того, как сцена их прочитала).
+
+## Генерация пола: Dual Grid System (modules/dualgrid.js + dualgrid.html)
+
+Автотайлинг по схеме Jess::Codes («двойная сетка»): тайл ложится не внутрь ячейки карты,
+а на её угол — точку схождения 4 ячеек данных. Биты 4 ячеек (TL/TR/BL/BR) дают 2⁴ = 16
+комбинаций — полный тайлсет всего 4×4 тайла (против 47 в классическом blob-автотайлинге),
+а границы у местности получаются скруглёнными.
+
+- **Карта** — `{ w, h, data }`, `data[y*w+x]` = 1 («фича»: земля/вода) или 0 (фон: трава).
+  Слой пола занимает ровно `w*ts × h*ts` пикселей, тайл ячейки (i,j) выбирается по углам
+  `D(i-1,j-1), D(i,j-1), D(i-1,j), D(i,j)`; за границами карты — значение `outside` (0).
+- **build({texture, map, outside, hideBackground})** — собирает контейнер тайлов
+  (нарезает тайлсет на 16 текстур, scaleMode «nearest»). **update(layer, map)** — подменяет
+  карту с переиспользованием спрайтов (размер тот же) или пересобирает детей на месте.
+- **Таблица углов TILE_CORNERS** — попиксельно выверена для `images/tiles/grass_dirt.png`
+  и `grass_water.png` (раскладка у обоих одинаковая: тайл 6 — сплошная «фича», 12 — сплошной
+  фон). Для чужого тайлсета 4×4: `detectLayout(текстура|изображение)` — автоопределение по
+  цветам (фон = самый частый цвет, «фича» = самый далёкий от него из частых; окно 4×4 с
+  отступом 2 у каждого угла голосует за ближайший эталон). Оба репозиторных тайлсета
+  определяются точно (проверено в демо, «detectLayout 2/2»).
+- **Наслаивание местностей** (река поверх пятен земли): верхний слой строится с
+  `hideBackground: true` — его чисто-фоновые тайлы скрываются (у воды непрозрачная трава
+  иначе закрасила бы нижний слой). Слои просто добавляются в один контейнер по порядку.
+- **Демо** `dualgrid.html`: карта 30×17 из fBm-шума (сид, кнопка «новая карта»), пороги
+  высот: < 0.40 вода, > 0.62 земля, зум 1–3× (авто), оверлей «сетка данных», мини-пример
+  6×4 (данные → результат обоих тайлсетов). Статус-строка содержит self-test: каждый тайл
+  слоя сверяется с `tileIndex()` + проверка detectLayout. API для консоли/агента —
+  `window.__DUALGRID`.
+
+```js
+const dual = createDualGrid();
+const dirt  = dual.build({ texture: texGrassDirt,  map: dirtMap });
+const water = dual.build({ texture: texGrassWater, map: waterMap, hideBackground: true });
+worldContainer.addChild(dirt, water);
+dual.update(dirt, newDirtMap);   // регенерация без пересоздания слоя
+```
 
 ## Производительность (стенд: вкладка 143 Гц, мир 1600×1200, юниты с коллизиями и HP)
 
@@ -342,6 +384,19 @@ window.__TEST    // полигон game.js: счёт, health, camera, scheduler,
 (и разблокировка звука).
 
 ## История изменений
+
+### Модуль dualgrid — генерация пола (2026-09-12)
+
+1. Новый модуль `modules/dualgrid.js`: Dual Grid System (Jess::Codes) — 16 тайлов на любую
+   форму границы; `build/update/tileIndex/detectLayout`, опции `outside` и `hideBackground`
+   (наслаивание: вода поверх пятен земли).
+2. Тайлсеты `images/tiles/grass_dirt.png`, `grass_water.png` (4×4 по 32px, источник —
+   пак elven_wood). Таблица углов выверена попиксельно Python-анализом: все 16 комбинаций
+   углов в обоих файлах присутствуют ровно по одному разу, раскладки совпадают.
+3. Демо `dualgrid.html`: fBm-генерация карты (value noise, 3 октавы, seed), оба тайлсета,
+   мини-пример «сетка данных → результат», оверлей сетки данных, зум, self-test в статусе.
+4. Проверка в браузере: self-test 1020/1020 тайлов обоих слоёв, detectLayout 2/2, регенерация
+   по сидам, зум 2× без размытия (nearest), ручная сверка tileIndex на карте 3×3.
 
 ### Двухуровневая сетка (2026-09-10, пятая итерация)
 
