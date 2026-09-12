@@ -8,3 +8,5 @@ Desktop.ini
 
 # Логи локального сервера
 *.log
+/preview/
+/engine/preview/
