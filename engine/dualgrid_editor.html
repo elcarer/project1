@@ -118,6 +118,35 @@
      это работает и по двойному клику (file://), без сервера -->
 <script src="./dll/pixi.min.js"></script>
 <script src="./scripts/engine/modules/dualgrid.js"></script>
+<script>
+// ДИАГНОСТИКА «Unsafe attempt to load URL»: страница сама таких загрузок не делает.
+// Ловим любого, кто вставляет в DOM или прописывает элементу пустой/страничный URL
+// (так Chrome резолвит src="" в адрес самой страницы) и печатаем виновника со стеком.
+(function () {
+    function check(el) {
+        if (!el || !el.getAttribute) return;
+        for (const a of ["src", "href", "data", "poster"]) {
+            const v = el.getAttribute(a);
+            if (v === "" || v === location.href) {
+                console.warn("[editor-diag] Подресурс с пустым/страничным URL:\n" +
+                    "элемент: " + el.tagName + " " + String(el.outerHTML).slice(0, 150) +
+                    "\nкто добавил:\n" + new Error().stack);
+            }
+        }
+    }
+    new MutationObserver((muts) => {
+        for (const m of muts) {
+            if (m.type === "attributes") check(m.target);
+            else for (const n of m.addedNodes) {
+                if (n.nodeType !== 1) continue;
+                check(n);
+                if (n.querySelectorAll) n.querySelectorAll("[src],[href],[data],[poster]").forEach(check);
+            }
+        }
+    }).observe(document.documentElement,
+        { childList: true, subtree: true, attributes: true, attributeFilter: ["src", "href", "data", "poster"] });
+})();
+</script>
 </head>
 <body>
 <header>
