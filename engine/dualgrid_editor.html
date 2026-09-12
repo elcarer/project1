@@ -226,6 +226,8 @@
 <script>
 (async () => {   // классический скрипт с обёрткой — работает и на file:// (модули там заблокированы)
 
+console.log("dualgrid_editor: v3 — data-URL тайлсеты, FileReader, без fetch (2026-09-12)");
+
 const TS = 32;                    // размер тайла (и ячейки данных) в пикселях мира
 const dual = createDualGrid();    // глобальная из modules/dualgrid.js
 const $ = (id) => document.getElementById(id);
