@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dual Grid — редактор карт</title>
+<style>
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        background: #0d0e11;
+        color: #cfd6e0;
+        font-family: "Segoe UI", sans-serif;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        user-select: none;
+    }
+    header {
+        padding: 8px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        border-bottom: 1px solid #23262d;
+        flex-shrink: 0;
+    }
+    .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    h1 { font-size: 16px; margin: 0 8px 0 0; color: #eee; font-weight: 600; white-space: nowrap; }
+    h1 small { color: #7d8590; font-weight: 400; }
+    h2 { font-size: 12px; margin: 0 0 8px; color: #9aa5b5; text-transform: uppercase; letter-spacing: 0.06em; }
+    section h2 .muted { text-transform: none; letter-spacing: 0; }
+    button, input, select {
+        background: #1b1e25;
+        color: #cfd6e0;
+        border: 1px solid #333945;
+        border-radius: 6px;
+        padding: 4px 9px;
+        font-size: 13px;
+        font-family: inherit;
+    }
+    button { cursor: pointer; white-space: nowrap; }
+    button:hover:not(:disabled) { background: #252a34; }
+    button:disabled { opacity: 0.4; cursor: default; }
+    button.active { background: #2c4a77; border-color: #4a6ea8; }
+    input[type="number"] { width: 64px; }
+    input[type="range"] { width: 100%; padding: 0; }
+    .group { display: flex; align-items: center; gap: 6px; }
+    .sep { width: 1px; height: 22px; background: #2a2e37; }
+    label { font-size: 13px; display: flex; align-items: center; gap: 6px; }
+    main { flex: 1; display: flex; min-height: 0; }
+    aside {
+        width: 330px;
+        flex-shrink: 0;
+        border-right: 1px solid #23262d;
+        overflow-y: auto;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+    .btnrow { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .small { font-size: 11.5px; line-height: 1.45; }
+    .muted { color: #7d8590; }
+    #layersUl { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+    #layersUl li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: #1b1e25;
+        border: 1px solid #2a2e37;
+        border-radius: 6px;
+        padding: 5px 8px;
+        cursor: pointer;
+        font-size: 13px;
+    }
+    #layersUl li:hover { border-color: #3d4453; }
+    #layersUl li.active { background: #223047; border-color: #4a6ea8; }
+    #layersUl li .lname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #layersUl li .lparams { color: #7d8590; font-size: 11px; white-space: nowrap; }
+    #layersUl li .eye { cursor: pointer; opacity: 0.9; }
+    .lbl { display: block; margin: 8px 0 2px; }
+    .lbl .val { float: right; color: #88ffc8; font-family: Consolas, monospace; }
+    #palette {
+        display: grid;
+        grid-template-columns: repeat(4, 52px);
+        gap: 5px;
+    }
+    #palette canvas {
+        width: 52px;
+        height: 52px;
+        image-rendering: pixelated;
+        cursor: pointer;
+        border: 2px solid #2a2e37;
+        border-radius: 4px;
+        background: #14161b;
+    }
+    #palette canvas.sel { border-color: #ffd24a; }
+    #wrap { flex: 1; position: relative; min-width: 0; background: #10131a; }
+    #wrap canvas { display: block; }
+    footer {
+        height: 30px;
+        border-top: 1px solid #23262d;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 0 12px;
+        font-family: Consolas, monospace;
+        font-size: 12px;
+        flex-shrink: 0;
+    }
+    #stCoords { min-width: 90px; color: #9aa5b5; }
+    #stTool { color: #ffd24a; }
+    #stMsg { color: #88ffc8; }
+    #stTest { margin-left: auto; color: #7fb8ff; }
+</style>
+<!-- Подключаем ЛОКАЛЬНЫЙ PixiJS -->
+<script src="./dll/pixi.min.js"></script>
+</head>
+<body>
+<header>
+    <div class="row">
+        <h1>Редактор карт <small>Dual Grid System</small></h1>
+        <button id="btnOpenPng">📂 Тайлсеты…</button>
+        <button id="btnOpenJson">📂 Открыть JSON…</button>
+        <input id="filePng" type="file" accept="image/png" multiple hidden>
+        <input id="fileJson" type="file" accept=".json,application/json" multiple hidden>
+        <button id="btnNew" title="очистить данные всех слоёв">📄 Новая</button>
+        <span class="group">размер:
+            <input id="inpW" type="number" min="1" max="512" value="30">
+            × <input id="inpH" type="number" min="1" max="512" value="17">
+            <button id="btnResize">применить</button>
+        </span>
+        <span class="group">сид:
+            <input id="inpSeed" type="number" value="10" style="width:80px">
+            <button id="btnGenerate">🎲 Сгенерировать</button>
+        </span>
+    </div>
+    <div class="row">
+        <button id="btnSaveManifest">💾 Манифест</button>
+        <button id="btnSaveMap">💾 Карта (JSON)</button>
+        <label title="png тайлсетов будут вшиты в файл — он станет самодостаточным"><input id="chkEmbed" type="checkbox"> встроить PNG (base64)</label>
+        <button id="btnExportPng" title="готовая картинка всей карты">🖼 PNG</button>
+        <span class="sep"></span>
+        <button id="btnUndo" title="Ctrl+Z">↶ Отменить</button>
+        <button id="btnRedo" title="Ctrl+Y">↺ Повторить</button>
+        <span class="sep"></span>
+        <button id="btnZoomOut">➖</button>
+        <span id="lblZoom" style="min-width:44px;text-align:center;font-family:Consolas,monospace;font-size:12px">100%</span>
+        <button id="btnZoomIn">➕</button>
+        <button id="btnFit">⤢ вписать</button>
+        <label><input id="chkGrid" type="checkbox" checked> сетка данных</label>
+    </div>
+</header>
+<main>
+    <aside>
+        <section>
+            <h2>Слои (снизу вверх)</h2>
+            <ul id="layersUl"></ul>
+            <div class="btnrow">
+                <button id="btnLayerAdd" title="новый слой из последнего выбранного тайлсета">+ слой</button>
+                <button id="btnLayerDel" title="удалить активный слой">🗑</button>
+                <button id="btnLayerUp" title="поднять слой">↑</button>
+                <button id="btnLayerDown" title="опустить слой">↓</button>
+            </div>
+        </section>
+        <section>
+            <h2>Активный слой: <span id="layerName" class="muted">—</span></h2>
+            <label class="lbl">частота «фичи» <span class="val" id="freqVal"></span>
+                <input id="rngFreq" type="range" min="0" max="100" value="30">
+            </label>
+            <label class="lbl">разброс <span class="val" id="scatVal"></span>
+                <input id="rngScatter" type="range" min="0" max="100" value="50">
+            </label>
+            <div class="small muted">0% — крупные материки, 100% — мелкие островки; применяется кнопкой «🎲 Сгенерировать»</div>
+            <label style="margin-top:8px"><input id="chkHideBg" type="checkbox"> скрывать фон (наслаивание)</label>
+            <label>вне карты: <select id="selOutside">
+                <option value="0">0 — фон</option>
+                <option value="1">1 — фича</option>
+            </select></label>
+            <div class="btnrow">
+                <button id="btnFillLayer" title="все ячейки слоя = 1">залить 1</button>
+                <button id="btnClearLayer" title="все ячейки слоя = 0">очистить</button>
+                <button id="btnInvertLayer">инверт</button>
+            </div>
+        </section>
+        <section>
+            <h2>Инструменты</h2>
+            <div class="btnrow wrap" id="tools" style="margin-top:0">
+                <button data-tool="brush" class="active">✏ Кисть (B)</button>
+                <button data-tool="eraser">🧽 Ластик (E)</button>
+                <button data-tool="bucket">🪣 Заливка (F)</button>
+                <button data-tool="select">⬚ Выделение (R)</button>
+                <button data-tool="stamp">🏷 Штамп (T)</button>
+            </div>
+            <label style="margin-top:8px">размер кисти: <select id="selBrush">
+                <option value="1">1×1</option>
+                <option value="2">2×2</option>
+                <option value="3">3×3</option>
+            </select></label>
+            <div class="small muted" style="margin-top:8px">
+                панорама — Space/ПКМ/СКМ + мышь · зум — колесо ·<br>
+                выделение: Ctrl+C копия · Ctrl+X вырезать · Del стереть ·<br>
+                Ctrl+V вставить (клик = место) · Esc — отмена · Ctrl+Z/Y — отмена/повтор
+            </div>
+        </section>
+        <section>
+            <h2><span>Палитра тайлсета</span> <span class="muted small">(клик → штамп)</span></h2>
+            <div id="palette"></div>
+        </section>
+    </aside>
+    <div id="wrap"></div>
+</main>
+<footer>
+    <span id="stCoords">—</span>
+    <span id="stTool">✏ Кисть</span>
+    <span id="stMsg"></span>
+    <span id="stTest"></span>
+</footer>
+
+<script type="module">
+import { createDualGrid } from "./scripts/engine/modules/dualgrid.js?v=2";
+
+const TS = 32;                    // размер тайла (и ячейки данных) в пикселях мира
+const dual = createDualGrid();
+const $ = (id) => document.getElementById(id);
+
+const TOOL_NAMES = { brush: "✏ Кисть", eraser: "🧽 Ластик", bucket: "🪣 Заливка",
+                     select: "⬚ Выделение", stamp: "🏷 Штамп" };
+const LAYER_COLORS = [0x6a4828, 0x3c78c8, 0xc84a3c, 0x8a3cc8, 0x2aa87c, 0xc8a03c, 0xc83c96, 0x6ac82a];
+
+// ── СОСТОЯНИЕ РЕДАКТОРА ──────────────────────────────────────────────────────
+const state = {
+    w: 30, h: 17, seed: 10,
+    layers: [],            // { name, texture, frequency, scatter, outside, hideBackground,
+                           //   visible, layout, data: Uint8Array, container }
+    active: 0,
+    tool: "brush", brushSize: 1, stampTile: 6,
+    sel: null,             // {x0,y0,x1,y1} в ячейках
+    clipboard: null,       // { w, h, data: [Uint8Array, ...] по слоям }
+    paste: null,           // { i, j } — режим вставки
+    undo: [], redo: [],
+};
+const textures = {};       // реестр: "имя.png" → PIXI.Texture (для JSON-загрузки)
+const images = {};         // реестр: "имя.png" → Image|ImageBitmap (палитра/детект)
+const view = { scale: 2, ox: 0, oy: 0 };
+
+const activeLayer = () => state.layers[state.active] || null;
+const mapOf = (l) => ({ w: state.w, h: state.h, data: l.data });
+
+// ── ПРИЛОЖЕНИЕ PIXI ──────────────────────────────────────────────────────────
+const app = new PIXI.Application();
+await app.init({ background: "#10131a", antialias: false, resolution: window.devicePixelRatio || 1, autoDensity: true });
+const wrap = $("wrap");
+wrap.appendChild(app.canvas);
+
+const root = new PIXI.Container();      // карта: слои + оверлеи, трансформ вида
+const gridHolder = new PIXI.Container(); // оверлей сетки/данных
+const uiHolder = new PIXI.Container();   // выделение, вставка, курсор кисти
+app.stage.addChild(root);
+app.renderer.resize(wrap.clientWidth, wrap.clientHeight);
+new ResizeObserver(() => {
+    app.renderer.resize(wrap.clientWidth, wrap.clientHeight);
+    applyView();
+}).observe(wrap);
+
+// ── ВИД: ПАН/ЗУМ ─────────────────────────────────────────────────────────────
+function applyView() {
+    root.scale.set(view.scale);
+    root.position.set(view.ox, view.oy);
+    $("lblZoom").textContent = Math.round(view.scale * 100) + "%";
+    drawUI();
+}
+function fitView() {
+    const s = Math.min(wrap.clientWidth / (state.w * TS), wrap.clientHeight / (state.h * TS));
+    view.scale = Math.max(0.1, Math.min(8, s));
+    view.ox = (wrap.clientWidth - state.w * TS * view.scale) / 2;
+    view.oy = (wrap.clientHeight - state.h * TS * view.scale) / 2;
+    applyView();
+}
+function zoomAt(mx, my, factor) {
+    const ns = Math.max(0.1, Math.min(8, view.scale * factor));
+    view.ox = mx - (mx - view.ox) * (ns / view.scale);
+    view.oy = my - (my - view.oy) * (ns / view.scale);
+    view.scale = ns;
+    applyView();
+}
+function screenToCell(e) {
+    const r = app.canvas.getBoundingClientRect();
+    const mx = e.clientX - r.left, my = e.clientY - r.top;
+    return { mx, my,
+             i: Math.floor((mx - view.ox) / (TS * view.scale)),
+             j: Math.floor((my - view.oy) / (TS * view.scale)) };
+}
+
+// ── УТИЛИТЫ ДАННЫХ ───────────────────────────────────────────────────────────
+const inBounds = (i, j) => i >= 0 && j >= 0 && i < state.w && j < state.h;
+
+function setCell(l, i, j, v) {
+    if (!inBounds(i, j)) return;
+    l.data[j * state.w + i] = v ? 1 : 0;
+}
+function paintCell(l, i, j, v) {
+    const s = state.brushSize;
+    const from = -Math.floor((s - 1) / 2), to = Math.floor(s / 2);
+    for (let dy = from; dy <= to; dy++) for (let dx = from; dx <= to; dx++) setCell(l, i + dx, j + dy, v);
+}
+function paintLine(l, x0, y0, x1, y1, v) {
+    // Брезенхэм — без разрывов при быстром движении мыши
+    const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy;
+    for (;;) {
+        paintCell(l, x0, y0, v);
+        if (x0 === x1 && y0 === y1) break;
+        const e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+}
+function bucket(l, i, j, v) {
+    if (!inBounds(i, j)) return;
+    const target = l.data[j * state.w + i];
+    if (target === (v ? 1 : 0)) return;
+    const stack = [[i, j]];
+    while (stack.length) {
+        const [x, y] = stack.pop();
+        if (!inBounds(x, y) || l.data[y * state.w + x] !== target) continue;
+        l.data[y * state.w + x] = v ? 1 : 0;
+        stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+    }
+}
+function stamp(l, i, j, tile) {
+    // Штамп тайла: выставляем 4 ячейки данных под его углами
+    const [tl, tr, bl, br] = l.layout[tile] || dual.TILE_CORNERS[tile];
+    setCell(l, i - 1, j - 1, tl);
+    setCell(l, i,     j - 1, tr);
+    setCell(l, i - 1, j,     bl);
+    setCell(l, i,     j,     br);
+}
+
+// ── UNDO / REDO (полный снимок стека слоёв) ──────────────────────────────────
+function snapshot() {
+    return {
+        w: state.w, h: state.h, seed: state.seed, active: state.active,
+        layers: state.layers.map((l) => ({ name: l.name, texture: l.texture,
+            frequency: l.frequency, scatter: l.scatter, outside: l.outside,
+            hideBackground: l.hideBackground, visible: l.visible, layout: l.layout,
+            data: l.data.slice() })),
+    };
+}
+function buildContainer(l) {
+    const c = dual.build({ texture: l.texture, map: { w: state.w, h: state.h, data: l.data },
+        outside: l.outside, layout: l.layout, hideBackground: l.hideBackground });
+    c.visible = l.visible;
+    return c;
+}
+function restore(snap) {
+    state.w = snap.w; state.h = snap.h; state.seed = snap.seed;
+    state.active = Math.min(snap.active, snap.layers.length - 1);
+    state.sel = null; state.paste = null;
+    state.layers = snap.layers.map((s) => ({ ...s, data: s.data.slice(), container: buildContainer(s) }));
+    rebuildRoot(); refreshAll(); selfTest();
+}
+function pushUndo() {
+    state.undo.push(snapshot());
+    if (state.undo.length > 40) state.undo.shift();
+    state.redo.length = 0;
+    updateUndoButtons();
+}
+function undo() {
+    if (!state.undo.length) return;
+    state.redo.push(snapshot());
+    restore(state.undo.pop());
+    updateUndoButtons();
+    msg("отменено");
+}
+function redo() {
+    if (!state.redo.length) return;
+    state.undo.push(snapshot());
+    restore(state.redo.pop());
+    updateUndoButtons();
+    msg("повторено");
+}
+function updateUndoButtons() {
+    $("btnUndo").disabled = !state.undo.length;
+    $("btnRedo").disabled = !state.redo.length;
+}
+
+// ── СБОРКА / ОБНОВЛЕНИЕ СЦЕНЫ ────────────────────────────────────────────────
+function rebuildRoot() {
+    root.removeChildren();
+    state.layers.forEach((l) => root.addChild(l.container));
+    root.addChild(gridHolder, uiHolder);
+}
+// После правок данных: обновить контейнеры слоёв + оверлеи + тест
+function syncLayers(list = state.layers, runTest = true) {
+    for (const l of list) dual.update(l.container, mapOf(l), { outside: l.outside, layout: l.layout });
+    drawOverlay(); drawUI();
+    if (runTest) selfTest();
+}
+
+// ── ОВЕРЛЕИ ──────────────────────────────────────────────────────────────────
+function drawOverlay() {
+    gridHolder.removeChildren().forEach((g) => g.destroy());
+    if (!$("chkGrid").checked) return;
+    const g = new PIXI.Graphics();
+    state.layers.forEach((l, idx) => {
+        if (!l.visible) return;
+        const color = LAYER_COLORS[idx % LAYER_COLORS.length];
+        for (let y = 0; y < state.h; y++) for (let x = 0; x < state.w; x++) {
+            if (l.data[y * state.w + x]) g.rect(x * TS, y * TS, TS, TS).fill({ color, alpha: 0.20 });
+        }
+    });
+    g.alpha = 1;
+    for (let x = 0; x <= state.w; x++) {
+        g.moveTo(x * TS, 0).lineTo(x * TS, state.h * TS).stroke({ width: 1, color: 0xffffff, alpha: 0.09 });
+    }
+    for (let y = 0; y <= state.h; y++) {
+        g.moveTo(0, y * TS).lineTo(state.w * TS, y * TS).stroke({ width: 1, color: 0xffffff, alpha: 0.09 });
+    }
+    g.rect(0, 0, state.w * TS, state.h * TS).stroke({ width: 1, color: 0x88ffc8, alpha: 0.5 });
+    gridHolder.addChild(g);
+}
+
+let hover = null; // ячейка под курсором для подсветки кисти/штампа
+let stampPreviewTex = null, stampPreviewKey = ""; // кэш текстуры превью штампа
+function drawUI() {
+    uiHolder.removeChildren().forEach((g) => g.destroy());
+    const lw = 1.5 / view.scale; // толщина линий постоянна на экране
+
+    // Выделение
+    if (state.sel) {
+        const s = state.sel;
+        const x0 = Math.min(s.x0, s.x1), y0 = Math.min(s.y0, s.y1);
+        const x1 = Math.max(s.x0, s.x1), y1 = Math.max(s.y0, s.y1);
+        const g = new PIXI.Graphics();
+        g.rect(x0 * TS, y0 * TS, (x1 - x0 + 1) * TS, (y1 - y0 + 1) * TS)
+            .fill({ color: 0xffe066, alpha: 0.10 })
+            .stroke({ width: lw * 1.5, color: 0xffe066, alpha: 0.95 });
+        uiHolder.addChild(g);
+    }
+    // Превью вставки
+    if (state.paste && state.clipboard) {
+        const g = new PIXI.Graphics();
+        state.layers.forEach((l, li) => {
+            if (!l.visible) return;
+            const color = LAYER_COLORS[li % LAYER_COLORS.length];
+            const chunk = state.clipboard.data[li];
+            for (let cy = 0; cy < state.clipboard.h; cy++) for (let cx = 0; cx < state.clipboard.w; cx++) {
+                if (chunk[cy * state.clipboard.w + cx]) {
+                    g.rect((state.paste.i + cx) * TS, (state.paste.j + cy) * TS, TS, TS)
+                        .fill({ color, alpha: 0.45 });
+                }
+            }
+        });
+        g.rect(state.paste.i * TS, state.paste.j * TS,
+               state.clipboard.w * TS, state.clipboard.h * TS)
+            .stroke({ width: lw, color: 0x88ffc8, alpha: 0.9 });
+        uiHolder.addChild(g);
+    }
+    // Курсор кисти / штампа
+    if (hover && ["brush", "eraser", "bucket", "stamp"].includes(state.tool)) {
+        if (state.tool === "stamp") {
+            const l = activeLayer();
+            if (l && images[l.name]) {
+                const key = `${l.name}:${state.stampTile}`;
+                if (key !== stampPreviewKey) {
+                    const cv = document.createElement("canvas");
+                    const ts = images[l.name].width / 4;
+                    cv.width = ts; cv.height = ts;
+                    const ctx = cv.getContext("2d");
+                    ctx.imageSmoothingEnabled = false;
+                    ctx.drawImage(images[l.name], (state.stampTile % 4) * ts,
+                                  Math.floor(state.stampTile / 4) * ts, ts, ts, 0, 0, ts, ts);
+                    stampPreviewTex = PIXI.Texture.from(cv);
+                    stampPreviewKey = key;
+                }
+                const sp = new PIXI.Sprite(stampPreviewTex);
+                sp.alpha = 0.75;
+                sp.position.set(hover.i * TS, hover.j * TS);
+                uiHolder.addChild(sp);
+            }
+        } else {
+            const s = state.tool === "brush" || state.tool === "bucket" ? state.brushSize : 1;
+            const from = -Math.floor((s - 1) / 2), to = Math.floor(s / 2);
+            const color = state.tool === "eraser" ? 0xff6a5e : 0x88ffc8;
+            const g = new PIXI.Graphics();
+            g.rect((hover.i + from) * TS, (hover.j + from) * TS, (to - from + 1) * TS, (to - from + 1) * TS)
+                .stroke({ width: lw, color, alpha: 0.9 });
+            uiHolder.addChild(g);
+        }
+    }
+}
+
+// ── SELF-TEST: каждый спрайт против tileIndex (+ видимость фона) ─────────────
+function selfTest() {
+    let total = 0, ok = 0;
+    for (const l of state.layers) {
+        const meta = l.container.dualMeta;
+        const bgTile = meta.lookup[0];
+        for (let j = 0; j < state.h; j++) for (let i = 0; i < state.w; i++) {
+            total++;
+            const expect = dual.tileIndex(mapOf(l), i, j, { outside: l.outside, layout: l.layout });
+            const sp = meta.sprites[j * state.w + i];
+            const f = sp.texture.frame;
+            const tileOk = f.x === (expect % 4) * meta.ts && f.y === Math.floor(expect / 4) * meta.ts;
+            const visOk = sp.visible === !(l.hideBackground && expect === bgTile);
+            if (tileOk && visOk) ok++;
+        }
+    }
+    $("stTest").textContent = `тест ${ok}/${total} · карта ${state.w}×${state.h} · слоёв ${state.layers.length} · сид ${state.seed}`;
+    return { ok, total };
+}
+
+// ── UI: СЛОИ ─────────────────────────────────────────────────────────────────
+function refreshLayersPanel() {
+    const ul = $("layersUl");
+    ul.innerHTML = "";
+    state.layers.forEach((l, i) => {
+        const li = document.createElement("li");
+        if (i === state.active) li.className = "active";
+        const eye = document.createElement("span");
+        eye.className = "eye";
+        eye.textContent = l.visible ? "👁" : "🚫";
+        eye.title = "показать/скрыть слой";
+        eye.onclick = (e) => { e.stopPropagation(); l.visible = !l.visible; l.container.visible = l.visible; drawOverlay(); refreshLayersPanel(); };
+        const name = document.createElement("span");
+        name.className = "lname";
+        name.textContent = l.name;
+        const params = document.createElement("span");
+        params.className = "lparams";
+        params.textContent = `${l.frequency}% / р${l.scatter}${l.hideBackground ? " · bg✕" : ""}`;
+        li.append(eye, name, params);
+        li.onclick = () => { state.active = i; refreshAll(); };
+        ul.appendChild(li);
+    });
+}
+function refreshLayerProps() {
+    const l = activeLayer();
+    $("layerName").textContent = l ? l.name : "—";
+    $("rngFreq").disabled = $("rngScatter").disabled = $("chkHideBg").disabled =
+        $("selOutside").disabled = $("btnFillLayer").disabled = $("btnClearLayer").disabled =
+        $("btnInvertLayer").disabled = $("btnLayerDel").disabled = $("btnLayerUp").disabled =
+        $("btnLayerDown").disabled = $("btnGenerate").disabled = !l;
+    if (!l) return;
+    $("rngFreq").value = l.frequency;
+    $("freqVal").textContent = l.frequency + "%";
+    $("rngScatter").value = l.scatter;
+    $("scatVal").textContent = l.scatter + "%";
+    $("chkHideBg").checked = l.hideBackground;
+    $("selOutside").value = String(l.outside);
+}
+function refreshPalette() {
+    const l = activeLayer();
+    const pal = $("palette");
+    pal.innerHTML = "";
+    if (!l || !images[l.name]) return;
+    const img = images[l.name];
+    const ts = img.width / 4;
+    for (let t = 0; t < 16; t++) {
+        const cv = document.createElement("canvas");
+        cv.width = ts; cv.height = ts;
+        const ctx = cv.getContext("2d");
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, (t % 4) * ts, Math.floor(t / 4) * ts, ts, ts, 0, 0, ts, ts);
+        if (t === state.stampTile) cv.classList.add("sel");
+        const [tl, tr, bl, br] = l.layout[t];
+        cv.title = `тайл ${t} (углы: TL${tl} TR${tr} BL${bl} BR${br})`;
+        cv.onclick = () => {
+            state.stampTile = t;
+            setTool("stamp");
+            refreshPalette();
+        };
+        pal.appendChild(cv);
+    }
+}
+function refreshAll() {
+    $("inpW").value = state.w;
+    $("inpH").value = state.h;
+    $("inpSeed").value = state.seed;
+    refreshLayersPanel();
+    refreshLayerProps();
+    refreshPalette();
+    drawOverlay();
+    drawUI();
+    updateUndoButtons();
+}
+function msg(text) { $("stMsg").textContent = text; }
+
+// ── СЛОИ: ДОБАВЛЕНИЕ / УДАЛЕНИЕ / ПОРЯДОК ────────────────────────────────────
+function addLayer(name, props = {}, withUndo = true) {
+    if (!textures[name]) { msg(`нет текстуры «${name}» — откройте тайлсет`); return; }
+    if (withUndo) pushUndo();
+    const l = {
+        name, texture: textures[name],
+        frequency: 30, scatter: 50, outside: 0, hideBackground: false, visible: true,
+        layout: detectLayoutSafe(name),
+        data: new Uint8Array(state.w * state.h),
+        ...props,
+    };
+    l.container = buildContainer(l);
+    state.layers.push(l);
+    state.active = state.layers.length - 1;
+    rebuildRoot(); refreshAll(); selfTest();
+    msg(`слой «${name}» добавлен`);
+}
+function detectLayoutSafe(name) {
+    try { return dual.detectLayout(images[name]); }
+    catch { return dual.TILE_CORNERS; }
+}
+function removeLayer() {
+    if (state.layers.length <= 1) { msg("нельзя удалить последний слой"); return; }
+    pushUndo();
+    state.layers.splice(state.active, 1);
+    state.active = Math.max(0, state.active - 1);
+    state.sel = null; state.paste = null;
+    rebuildRoot(); refreshAll(); selfTest();
+    msg("слой удалён");
+}
+function moveLayer(dir) {
+    const to = state.active + dir;
+    if (to < 0 || to >= state.layers.length) return;
+    pushUndo();
+    const [l] = state.layers.splice(state.active, 1);
+    state.layers.splice(to, 0, l);
+    state.active = to;
+    rebuildRoot(); refreshLayersPanel(); drawOverlay();
+}
+
+// ── ГЕНЕРАЦИЯ ПО МАНИФЕСТУ ───────────────────────────────────────────────────
+function manifestObject(embed = false) {
+    return dual.makeManifest({
+        width: state.w, height: state.h, seed: state.seed,
+        layers: state.layers.map((l) => ({
+            texture: l.name, frequency: l.frequency, scatter: l.scatter,
+            outside: l.outside, hideBackground: l.hideBackground, layout: l.layout,
+            ...(embed && images[l.name] ? { png: imageToDataURL(images[l.name]) } : {}),
+        })),
+    });
+}
+async function generateAll(withUndo = true) {
+    const l = activeLayer();
+    if (!l) return;
+    if (withUndo) pushUndo();
+    const manifest = manifestObject(false);
+    try {
+        const res = await dual.mapFromManifest(manifest, textures);
+        res.layers.forEach((container, i) => {
+            const layer = state.layers[i];
+            layer.container = container;
+            container.visible = layer.visible;
+            layer.data = res.maps[i].data;
+        });
+    } catch (err) {
+        if (withUndo) { state.undo.pop(); updateUndoButtons(); }
+        msg("ошибка генерации: " + err.message);
+        return;
+    }
+    state.sel = null; state.paste = null;
+    rebuildRoot(); refreshAll(); selfTest();
+    msg("сгенерировано по манифесту (частота/разброс слоёв)");
+}
+
+// ── ЗАГРУЗКА JSON (манифест | файл карты) ────────────────────────────────────
+function baseName(p) { return String(p).split(/[\\/]/).pop(); }
+function imageToDataURL(src) {
+    const cv = document.createElement("canvas");
+    cv.width = src.width; cv.height = src.height;
+    const ctx = cv.getContext("2d");
+    ctx.drawImage(src, 0, 0);
+    return cv.toDataURL("image/png");
+}
+function loadImageEl(src) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("не удалось прочитать изображение"));
+        img.src = src;
+    });
+}
+function textureFromImage(img) {
+    const tex = PIXI.Texture.from(img);
+    tex.source.scaleMode = "nearest";
+    return tex;
+}
+async function resolveTexture(name, embeddedPng) {
+    const base = baseName(name);
+    if (textures[base]) return textures[base];
+    if (embeddedPng) {
+        const img = await loadImageEl(embeddedPng);
+        textures[base] = textureFromImage(img);
+        images[base] = img;
+        return textures[base];
+    }
+    throw new Error(`текстура «${name}» не найдена — откройте её png (кнопка «📂 Тайлсеты…»)`);
+}
+async function applyManifest(obj) {
+    pushUndo();
+    try {
+        state.w = obj.width; state.h = obj.height; state.seed = obj.seed ?? 1;
+        const newLayers = [];
+        for (const ml of obj.layers) {
+            const tex = await resolveTexture(ml.texture, ml.png);
+            newLayers.push({
+                name: baseName(ml.texture), texture: tex,
+                frequency: ml.frequency ?? 30, scatter: ml.scatter ?? 50,
+                outside: ml.outside ?? 0, hideBackground: !!ml.hideBackground,
+                visible: true, layout: ml.layout || dual.TILE_CORNERS,
+                data: new Uint8Array(state.w * state.h),
+            });
+        }
+        state.layers = newLayers;
+        state.active = 0;
+    } catch (err) { state.undo.pop(); updateUndoButtons(); msg("ошибка: " + err.message); return; }
+    await generateAll(false);   // строим контейнеры по параметрам манифеста
+    fitView();
+    msg("манифест загружен и сгенерирован");
+}
+async function applyMapFile(obj) {
+    pushUndo();
+    try {
+        state.w = obj.width; state.h = obj.height;
+        const newLayers = [];
+        for (const ml of obj.layers) {
+            const tex = await resolveTexture(ml.texture, ml.png);
+            if (!ml.data || ml.data.length !== state.w * state.h) {
+                throw new Error(`data слоя «${ml.texture}» должна быть длиной ${state.w * state.h}`);
+            }
+            const l = {
+                name: baseName(ml.texture), texture: tex,
+                frequency: 30, scatter: 50,
+                outside: ml.outside ?? 0, hideBackground: !!ml.hideBackground,
+                visible: true, layout: ml.layout || dual.TILE_CORNERS,
+                data: Uint8Array.from(ml.data, (v) => (v ? 1 : 0)),
+            };
+            l.container = dual.build({ texture: tex, map: mapOf(l), outside: l.outside,
+                layout: l.layout, hideBackground: l.hideBackground });
+            newLayers.push(l);
+        }
+        state.layers = newLayers;
+        state.active = 0;
+        state.sel = null; state.paste = null;
+    } catch (err) { state.undo.pop(); updateUndoButtons(); msg("ошибка: " + err.message); return; }
+    rebuildRoot(); refreshAll(); selfTest(); fitView();
+    msg("файл карты загружен (без генерации)");
+}
+async function openJsonFiles(files) {
+    for (const file of files) {
+        try {
+            const obj = JSON.parse(await file.text());
+            if (obj.format === "dualgrid-manifest") await applyManifest(obj);
+            else if (obj.format === "dualgrid-map") await applyMapFile(obj);
+            else msg(`«${file.name}»: неизвестный format — это не файл dualgrid`);
+        } catch (err) { msg(`«${file.name}»: ${err.message}`); }
+    }
+}
+async function openPngFiles(files) {
+    for (const file of files) {
+        const name = baseName(file.name);
+        try {
+            const img = await loadImageEl(URL.createObjectURL(file));
+            if (img.width % 4 !== 0 || img.width / 4 !== TS) {
+                msg(`«${name}»: нужен тайлсет 4×4 с тайлом ${TS}px (ширина ${TS * 4})`);
+                continue;
+            }
+            textures[name] = textureFromImage(img);
+            images[name] = img;
+            const existing = state.layers.find((l) => l.name === name);
+            if (existing) {
+                pushUndo();
+                existing.texture = textures[name];
+                existing.layout = detectLayoutSafe(name);
+                existing.container = buildContainer(existing);
+                rebuildRoot(); refreshAll(); selfTest();
+                msg(`тайлсет «${name}» обновлён`);
+            } else {
+                addLayer(name);
+            }
+        } catch (err) { msg(`«${name}»: ${err.message}`); }
+    }
+}
+
+// ── СОХРАНЕНИЕ ───────────────────────────────────────────────────────────────
+function downloadBlob(filename, blob) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+function saveManifest() {
+    downloadBlob("map_manifest.json",
+        new Blob([JSON.stringify(manifestObject($("chkEmbed").checked), null, 1)], { type: "application/json" }));
+    msg("манифест сохранён (движок сгенерирует карту по нему)");
+}
+function saveMap() {
+    downloadBlob("map.json",
+        new Blob([JSON.stringify(mapObject($("chkEmbed").checked), null, 1)], { type: "application/json" }));
+    msg("файл карты сохранён (движок отрисует без генерации)");
+}
+function mapObject(embed = false) {
+    return dual.makeMap({
+        width: state.w, height: state.h, tileSize: TS,
+        layers: state.layers.map((l) => ({
+            texture: l.name, data: l.data, outside: l.outside,
+            hideBackground: l.hideBackground, layout: l.layout,
+            ...(embed && images[l.name] ? { png: imageToDataURL(images[l.name]) } : {}),
+        })),
+    });
+}
+function exportPNG() {
+    gridHolder.visible = false; uiHolder.visible = false;
+    const rt = PIXI.RenderTexture.create({ width: state.w * TS, height: state.h * TS, resolution: 1 });
+    app.renderer.render({ container: root, target: rt, clear: true });
+    gridHolder.visible = true; uiHolder.visible = true;
+    const canvas = app.renderer.extract.canvas(rt);
+    rt.destroy(true);
+    canvas.toBlob((b) => { downloadBlob("map.png", b); msg("PNG карты сохранён"); }, "image/png");
+}
+
+// ── РАЗМЕР КАРТЫ / НОВАЯ ─────────────────────────────────────────────────────
+function resizeMap(nw, nh) {
+    nw = Math.max(1, Math.min(512, Math.round(Number(nw) || state.w)));
+    nh = Math.max(1, Math.min(512, Math.round(Number(nh) || state.h)));
+    if (nw === state.w && nh === state.h) return;
+    pushUndo();
+    for (const l of state.layers) {
+        const nd = new Uint8Array(nw * nh);
+        for (let y = 0; y < Math.min(state.h, nh); y++) {
+            for (let x = 0; x < Math.min(state.w, nw); x++) nd[y * nw + x] = l.data[y * state.w + x];
+        }
+        l.data = nd;
+        // размеры передаём явно новые: mapOf() вернул бы ещё старые state.w/h
+        dual.update(l.container, { w: nw, h: nh, data: nd }, { outside: l.outside, layout: l.layout });
+    }
+    state.w = nw; state.h = nh;
+    state.sel = null; state.paste = null;
+    refreshAll(); selfTest();
+    msg(`размер карты: ${nw}×${nh}`);
+}
+function newMap() {
+    pushUndo();
+    for (const l of state.layers) l.data.fill(0);
+    state.sel = null; state.paste = null; state.clipboard = null;
+    syncLayers();
+    refreshAll();
+    msg("новая карта: данные всех слоёв очищены");
+}
+
+// ── ВЫДЕЛЕНИЕ: КОПИЯ / ВЫРЕЗАТЬ / СТЕРЕТЬ / ВСТАВИТЬ ─────────────────────────
+function normSel() {
+    if (!state.sel) return null;
+    const s = state.sel;
+    const x0 = Math.max(0, Math.min(s.x0, s.x1)), y0 = Math.max(0, Math.min(s.y0, s.y1));
+    const x1 = Math.min(state.w - 1, Math.max(s.x0, s.x1)), y1 = Math.min(state.h - 1, Math.max(s.y0, s.y1));
+    if (x1 < x0 || y1 < y0) return null;
+    return { x0, y0, x1, y1 };
+}
+function copySel() {
+    const s = normSel();
+    if (!s) { msg("нет выделения (R + рамка мышью)"); return; }
+    const w = s.x1 - s.x0 + 1, h = s.y1 - s.y0 + 1;
+    const data = state.layers.map((l) => {
+        const chunk = new Uint8Array(w * h);
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+            chunk[y * w + x] = l.data[(s.y0 + y) * state.w + (s.x0 + x)];
+        }
+        return chunk;
+    });
+    state.clipboard = { w, h, data };
+    msg(`скопировано ${w}×${h} (все слои, Ctrl+V — вставить)`);
+}
+function eraseSel() {
+    const s = normSel();
+    if (!s) { msg("нет выделения (R + рамка мышью)"); return; }
+    pushUndo();
+    for (let y = s.y0; y <= s.y1; y++) for (let x = s.x0; x <= s.x1; x++) {
+        for (const l of state.layers) l.data[y * state.w + x] = 0;
+    }
+    syncLayers();
+    msg("выделенный кусок стёрт (все слои)");
+}
+function cutSel() {
+    const s = normSel();
+    if (!s) { msg("нет выделения (R + рамка мышью)"); return; }
+    copySel();
+    eraseSel();
+}
+function startPaste() {
+    if (!state.clipboard) { msg("буфер пуст (Ctrl+C на выделении)"); return; }
+    state.paste = { i: 0, j: 0 };
+    msg("кликните по карте — вставить кусок; Esc — отмена");
+    drawUI();
+}
+function applyPaste(i, j) {
+    pushUndo();
+    state.layers.forEach((l, li) => {
+        const chunk = state.clipboard.data[li];
+        for (let cy = 0; cy < state.clipboard.h; cy++) for (let cx = 0; cx < state.clipboard.w; cx++) {
+            setCell(l, i + cx, j + cy, chunk[cy * state.clipboard.w + cx]);
+        }
+    });
+    state.paste = null;
+    syncLayers();
+    msg("вставлено");
+}
+
+// ── МЫШЬ ─────────────────────────────────────────────────────────────────────
+let drag = null;
+let spaceHeld = false;
+const canvas = app.canvas;
+canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+canvas.addEventListener("pointerdown", (e) => {
+    try { canvas.setPointerCapture(e.pointerId); } catch { /* синтетические события без capture */ }
+    const pt = screenToCell(e);
+    if (e.button === 1 || e.button === 2 || spaceHeld) {
+        drag = { mode: "pan", sx: e.clientX, sy: e.clientY, ox: view.ox, oy: view.oy };
+        return;
+    }
+    if (e.button !== 0) return;
+    if (state.paste) { applyPaste(pt.i, pt.j); return; }
+    const l = activeLayer();
+    if (!l) return;
+    switch (state.tool) {
+        case "brush":
+        case "eraser":
+            pushUndo();
+            drag = { mode: "paint", li: pt.i, lj: pt.j };
+            paintLine(l, pt.i, pt.j, pt.i, pt.j, state.tool === "brush" ? 1 : 0);
+            syncLayers([l], false);
+            break;
+        case "bucket":
+            pushUndo();
+            bucket(l, pt.i, pt.j, 1);
+            syncLayers([l]);
+            break;
+        case "stamp":
+            pushUndo();
+            stamp(l, pt.i, pt.j, state.stampTile);
+            syncLayers([l]);
+            break;
+        case "select":
+            state.sel = { x0: pt.i, y0: pt.j, x1: pt.i, y1: pt.j };
+            drag = { mode: "select" };
+            drawUI();
+            break;
+    }
+});
+canvas.addEventListener("pointermove", (e) => {
+    const pt = screenToCell(e);
+    const inside = inBounds(pt.i, pt.j);
+    $("stCoords").textContent = inside ? `x:${pt.i} y:${pt.j}` : "—";
+    if (inside) { hover = { i: pt.i, j: pt.j }; if (!drag) drawUI(); } else { hover = null; if (!drag) drawUI(); }
+    if (!drag) return;
+    if (drag.mode === "pan") {
+        view.ox = drag.ox + (e.clientX - drag.sx);
+        view.oy = drag.oy + (e.clientY - drag.sy);
+        applyView();
+    } else if (drag.mode === "paint") {
+        const l = activeLayer();
+        if (!l) return;
+        paintLine(l, drag.li, drag.lj, pt.i, pt.j, state.tool === "brush" ? 1 : 0);
+        drag.li = pt.i; drag.lj = pt.j;
+        syncLayers([l], false);
+    } else if (drag.mode === "select") {
+        state.sel.x1 = pt.i; state.sel.y1 = pt.j;
+        drawUI();
+    }
+});
+canvas.addEventListener("pointerup", () => {
+    if (drag && drag.mode === "select") {
+        if (!normSel()) state.sel = null;
+        drawUI();
+    }
+    if (drag && drag.mode === "paint") selfTest(); // сверка после штриха
+    drag = null;
+});
+canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const r = app.canvas.getBoundingClientRect();
+    zoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.25 : 0.8);
+}, { passive: false });
+
+// ── КЛАВИАТУРА ───────────────────────────────────────────────────────────────
+window.addEventListener("keydown", (e) => {
+    const tag = (e.target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "select" || tag === "textarea") return;
+    if (e.code === "Space") { spaceHeld = true; e.preventDefault(); return; }
+    if (e.ctrlKey || e.metaKey) {
+        const k = e.code;
+        if (k === "KeyZ") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+        if (k === "KeyY") { e.preventDefault(); redo(); return; }
+        if (k === "KeyC") { e.preventDefault(); copySel(); return; }
+        if (k === "KeyX") { e.preventDefault(); cutSel(); return; }
+        if (k === "KeyV") { e.preventDefault(); startPaste(); return; }
+        return;
+    }
+    switch (e.code) {
+        case "KeyB": setTool("brush"); break;
+        case "KeyE": setTool("eraser"); break;
+        case "KeyF": setTool("bucket"); break;
+        case "KeyR": setTool("select"); break;
+        case "KeyT": setTool("stamp"); break;
+        case "KeyG":
+            $("chkGrid").checked = !$("chkGrid").checked;
+            drawOverlay();
+            break;
+        case "Delete":
+        case "Backspace": eraseSel(); break;
+        case "Escape":
+            state.sel = null; state.paste = null;
+            drawUI();
+            msg("");
+            break;
+    }
+});
+window.addEventListener("keyup", (e) => { if (e.code === "Space") spaceHeld = false; });
+
+function setTool(tool) {
+    state.tool = tool;
+    document.querySelectorAll("#tools button").forEach((b) => b.classList.toggle("active", b.dataset.tool === tool));
+    $("stTool").textContent = TOOL_NAMES[tool];
+    drawUI();
+}
+
+// ── ПРИВЯЗКА КОНТРОЛОВ ───────────────────────────────────────────────────────
+$("btnOpenPng").onclick = () => $("filePng").click();
+$("btnOpenJson").onclick = () => $("fileJson").click();
+$("filePng").onchange = (e) => { openPngFiles([...e.target.files]); e.target.value = ""; };
+$("fileJson").onchange = (e) => { openJsonFiles([...e.target.files]); e.target.value = ""; };
+$("btnNew").onclick = newMap;
+$("btnResize").onclick = () => resizeMap($("inpW").value, $("inpH").value);
+$("btnGenerate").onclick = () => { state.seed = Number($("inpSeed").value) || 0; generateAll(); };
+$("btnSaveManifest").onclick = saveManifest;
+$("btnSaveMap").onclick = saveMap;
+$("btnExportPng").onclick = exportPNG;
+$("btnUndo").onclick = undo;
+$("btnRedo").onclick = redo;
+$("btnZoomIn").onclick = () => zoomAt(wrap.clientWidth / 2, wrap.clientHeight / 2, 1.25);
+$("btnZoomOut").onclick = () => zoomAt(wrap.clientWidth / 2, wrap.clientHeight / 2, 0.8);
+$("btnFit").onclick = fitView;
+$("chkGrid").onchange = drawOverlay;
+$("inpSeed").onchange = (e) => { state.seed = Number(e.target.value) || 0; };
+document.querySelectorAll("#tools button").forEach((b) => { b.onclick = () => setTool(b.dataset.tool); });
+$("selBrush").onchange = (e) => { state.brushSize = Number(e.target.value); drawUI(); };
+$("btnLayerAdd").onclick = () => {
+    const names = Object.keys(textures);
+    if (!names.length) { msg("сначала откройте тайлсет"); return; }
+    const last = state.layers[state.layers.length - 1];
+    const name = names.find((n) => !state.layers.some((l) => l.name === n)) || last.name;
+    addLayer(name);
+};
+$("btnLayerDel").onclick = removeLayer;
+$("btnLayerUp").onclick = () => moveLayer(+1);
+$("btnLayerDown").onclick = () => moveLayer(-1);
+$("rngFreq").oninput = (e) => { const l = activeLayer(); if (!l) return; l.frequency = Number(e.target.value); $("freqVal").textContent = l.frequency + "%"; refreshLayersPanel(); };
+$("rngScatter").oninput = (e) => { const l = activeLayer(); if (!l) return; l.scatter = Number(e.target.value); $("scatVal").textContent = l.scatter + "%"; refreshLayersPanel(); };
+$("chkHideBg").onchange = (e) => {
+    const l = activeLayer(); if (!l) return;
+    l.hideBackground = e.target.checked;
+    dual.update(l.container, mapOf(l), { hideBackground: l.hideBackground, layout: l.layout });
+    selfTest();
+};
+$("selOutside").onchange = (e) => {
+    const l = activeLayer(); if (!l) return;
+    l.outside = Number(e.target.value);
+    dual.update(l.container, mapOf(l), { outside: l.outside, layout: l.layout });
+    selfTest();
+};
+$("btnFillLayer").onclick = () => { const l = activeLayer(); if (!l) return; pushUndo(); l.data.fill(1); syncLayers([l]); };
+$("btnClearLayer").onclick = () => { const l = activeLayer(); if (!l) return; pushUndo(); l.data.fill(0); syncLayers([l]); };
+$("btnInvertLayer").onclick = () => {
+    const l = activeLayer(); if (!l) return;
+    pushUndo();
+    for (let i = 0; i < l.data.length; i++) l.data[i] = l.data[i] ? 0 : 1;
+    syncLayers([l]);
+};
+// Drag & drop файлов на страницу
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const files = [...e.dataTransfer.files];
+    openPngFiles(files.filter((f) => f.type === "image/png"));
+    openJsonFiles(files.filter((f) => f.name.endsWith(".json")));
+});
+
+// ── АВТОМАТИЗАЦИЯ (консоль/агент) ────────────────────────────────────────────
+window.__MAPEDITOR = {
+    dual, state, view, textures, images,
+    generateAll, selfTest, resizeMap, newMap, fitView, undo, redo,
+    paintCell: (i, j, v = 1) => { const l = activeLayer(); pushUndo(); paintCell(l, i, j, v); syncLayers([l]); },
+    stamp: (i, j, tile = state.stampTile) => { const l = activeLayer(); pushUndo(); stamp(l, i, j, tile); syncLayers([l]); },
+    bucket: (i, j) => { const l = activeLayer(); pushUndo(); bucket(l, i, j, 1); syncLayers([l]); },
+    select: (x0, y0, x1, y1) => { state.sel = { x0, y0, x1, y1 }; drawUI(); },
+    copySel, cutSel, eraseSel, startPaste, applyPaste,
+    manifestObject, mapObject, applyManifest, applyMapFile, exportPNG,
+    addLayer: (name) => addLayer(name),
+    setTool, msg,
+};
+
+// ── СТАРТ: реестр тайлсетов + два слоя + генерация по манифесту ──────────────
+for (const name of ["grass_dirt.png", "grass_water.png"]) {
+    const tex = await PIXI.Assets.load(`images/tiles/${name}`);
+    tex.source.scaleMode = "nearest";
+    textures[name] = tex;
+    images[name] = tex.source.resource;
+}
+addLayer("grass_dirt.png", { frequency: 30, scatter: 55 }, false);
+addLayer("grass_water.png", { frequency: 25, scatter: 40, hideBackground: true }, false);
+await generateAll(false);
+fitView();
+setTool("brush");
+</script>
+</body>
+</html>

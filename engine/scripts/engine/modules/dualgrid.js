@@ -32,6 +32,30 @@
 //   stage.addChild(water);
 //
 //   const idx = dual.tileIndex(map, 3, 4);     // какой тайл (0..15) стоит в ячейке (3,4)
+//
+// ГЕНЕРАЦИЯ И ФАЙЛЫ КАРТ (два сценария геймдизайнера, их можно сочетать):
+//
+//   1) Глобальную карту можно ГЕНЕРИРОВАТЬ по манифесту:
+//   { format: "dualgrid-manifest", version: 1, width, height, seed,
+//     layers: [{ texture, frequency, scatter, outside, hideBackground, layout? }] }
+//   frequency — процент ячеек «фичи» (0..100, выдерживается точно квантилем шума),
+//   scatter — «разброс»: 0 — крупные материки, 100 — мелкие островки.
+//   makeManifest({...}) собирает объект с умолчаниями и проверкой,
+//   mapFromManifest(манифест, textures) → Promise<{ root, layers, maps }> — стек слоёв.
+//   Сид каждого слоя детерминирован: hashSeed(`${seed}:${индекс}:${texture}`) —
+//   одна и та же генерация в движке и редакторе.
+//
+//   2) Локальную карту (данж) можно ОТРИСОВЫВАТЬ из готового файла карты:
+//   { format: "dualgrid-map", version: 1, width, height,
+//     layers: [{ texture, data: [0/1, ...], outside, hideBackground, layout? }] }
+//   mapFromJSON(карта, textures) → Promise<{ root, layers, maps }> — без генерации.
+//
+//   В обоих форматах слой может нести png: "data:image/png;base64,…" — тогда текстура
+//   берётся прямо из файла (файл самодостаточен). textures — необязательный справочник
+//   { "имя.png": PIXI.Texture }; сначала ищется точное имя, затем по базовому имени.
+//
+//   generateMap({ w, h, seed, frequency, scatter }) — процедурная карта 0/1 (fBm-шум
+//   value-noise, 3 октавы; порог берётся квантилем, поэтому частота соблюдается точно).
 
 // Углы каждого тайла 4×4: [TL, TR, BL, BR]; 1 — угол «фичи», 0 — угол фона.
 // Индекс тайла = строка * 4 + столбец (0 — левый верхний, 15 — правый нижний).
@@ -46,6 +70,48 @@ const TILE_CORNERS = [
 function colorDist(a, b) {
     const dr = a[0] - b[0], dg = a[1] - b[1], db = a[2] - b[2];
     return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
+// Детерминированный PRNG (mulberry32) — одинаковые сиды дают одинаковые карты
+function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+        a = (a + 0x6D2B79F5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+// FNV-1a: строка → uint32 (для строковых сидов вида "10:1:grass_water.png")
+function hashSeed(str) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+}
+
+function clampPercent(v) {
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
+}
+
+// Smoothstep — сглаживание интерполяции шума
+function smooth(t) {
+    return t * t * (3 - 2 * t);
+}
+
+// Сравнение таблиц углов по содержимому (чужой тайлсет может иметь свою раскладку)
+function sameLayout(a, b) {
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i][0] !== b[i][0] || a[i][1] !== b[i][1] ||
+            a[i][2] !== b[i][2] || a[i][3] !== b[i][3]) return false;
+    }
+    return true;
 }
 
 function createDualGrid() {
@@ -98,7 +164,7 @@ function createDualGrid() {
     // hideBackground скрывает «полностью фоновые» тайлы — слой становится
     // прозрачным там, где нет «фичи» (нужно верхним слоям, чтобы не перекрывать
     // нижние: у воды травяные тайлы непрозрачны и закрасили бы землю под собой).
-    function fill(container, textures, ts, map, lookup, outside, hideBackground) {
+    function fill(container, textures, ts, map, layout, lookup, outside, hideBackground) {
         const bgTile = lookup[0]; // тайл со всеми 4 углами фона
         const sprites = new Array(map.w * map.h);
         for (let j = 0; j < map.h; j++) {
@@ -113,28 +179,31 @@ function createDualGrid() {
                 sprites[j * map.w + i] = sprite;
             }
         }
-        // Метаданные для update() и проверок
-        container.dualMeta = { w: map.w, h: map.h, outside, lookup, textures, sprites, ts,
+        // Метаданные для update() и проверок (layout — для сравнения раскладок)
+        container.dualMeta = { w: map.w, h: map.h, outside, lookup, layout, textures, sprites, ts,
                                hideBackground: !!hideBackground, bgTile };
         return container;
     }
 
     // Собрать слой пола. Опции: outside — значение карты за границами (0 = фон),
-    // hideBackground — скрыть чисто-фоновые тайлы (для наслаиваемых слоёв).
+    // hideBackground — скрыть чисто-фоновые тайлы (для наслаиваемых слоёв),
+    // layout — своя таблица углов (например, из detectLayout для чужого тайлсета).
     function build({ texture, map, outside = 0, layout = TILE_CORNERS, hideBackground = false }) {
         const { textures, ts } = makeTileTextures(texture);
-        return fill(new PIXI.Container(), textures, ts, map, buildLookup(layout), outside, hideBackground);
+        return fill(new PIXI.Container(), textures, ts, map, layout, buildLookup(layout), outside, hideBackground);
     }
 
-    // Подменить карту у готового слоя. При совпадении размеров переназначаем текстуры
-    // (спрайты переиспользуются), при несовпадении пересобираем детей на месте —
-    // объект контейнера остаётся тем же, его не нужно пере-добавлять на сцену.
-    function update(container, map, { outside, layout = TILE_CORNERS } = {}) {
+    // Подменить карту у готового слоя. При совпадении размеров/outside/раскладки
+    // переназначаем текстуры (спрайты переиспользуются), при несовпадении пересобираем
+    // детей на месте — объект контейнера остаётся тем же, его не нужно пере-добавлять.
+    // Опция hideBackground (если передана) переключает режим «прозрачного фона».
+    function update(container, map, { outside, layout = TILE_CORNERS, hideBackground } = {}) {
         const meta = container.dualMeta;
         if (!meta) throw new Error("dualgrid.update: контейнер создан не через build()");
         const newOutside = outside ?? meta.outside;
+        if (hideBackground !== undefined) meta.hideBackground = !!hideBackground;
         if (meta.w === map.w && meta.h === map.h && newOutside === meta.outside &&
-            layout === TILE_CORNERS) {
+            sameLayout(layout, meta.layout)) {
             const lookup = meta.lookup;
             for (let j = 0; j < map.h; j++) {
                 for (let i = 0; i < map.w; i++) {
@@ -149,7 +218,7 @@ function createDualGrid() {
             return container;
         }
         container.removeChildren().forEach((s) => s.destroy());
-        return fill(container, meta.textures, meta.ts, map, buildLookup(layout), newOutside,
+        return fill(container, meta.textures, meta.ts, map, layout, buildLookup(layout), newOutside,
                     meta.hideBackground);
     }
 
@@ -211,7 +280,206 @@ function createDualGrid() {
         return layout;
     }
 
-    return { build, update, tileIndex, detectLayout, TILE_CORNERS };
+    // ── ГЕНЕРАТОР КАРТ ────────────────────────────────────────────────────────
+    // fBm value-noise (3 октавы) + порог-квантиль: частота «фичи» (в %) выдерживается
+    // точно при любом сиде и разбросе. scatter: 0 — решётка 1.5 клетки (крупные
+    // материки), 100 — до min(w,h)/2.2 клеток (мелкие островки).
+    function generateMap({ w, h, seed = 1, frequency = 30, scatter = 50 }) {
+        if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1) {
+            throw new Error("dualgrid.generateMap: размеры должны быть целыми ≥ 1");
+        }
+        const f = clampPercent(frequency) / 100;
+        const s = clampPercent(scatter) / 100;
+        const maxCells = Math.max(2, Math.min(w, h) / 2.2);
+        const baseCells = 1.5 + s * (maxCells - 1.5);
+        const rng = mulberry32(typeof seed === "number" ? seed >>> 0 : hashSeed(String(seed)));
+
+        const value = new Float32Array(w * h);
+        let ampSum = 0;
+        for (const [mult, amp] of [[1, 0.5], [2, 0.3], [4, 0.2]]) {
+            ampSum += amp;
+            const cells = Math.max(1, Math.round(baseCells * mult));
+            const gw = cells + 1;
+            const lattice = Array.from({ length: gw * gw }, () => rng());
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const fx = (x / w) * cells, fy = (y / h) * cells;
+                    const x0 = Math.floor(fx), y0 = Math.floor(fy);
+                    const tx = smooth(fx - x0), ty = smooth(fy - y0);
+                    const v00 = lattice[y0 * gw + x0],       v10 = lattice[y0 * gw + x0 + 1];
+                    const v01 = lattice[(y0 + 1) * gw + x0], v11 = lattice[(y0 + 1) * gw + x0 + 1];
+                    value[y * w + x] += (v00 + (v10 - v00) * tx + (v01 - v00) * ty +
+                                         (v00 - v10 - v01 + v11) * tx * ty) * amp;
+                }
+            }
+        }
+        for (let i = 0; i < value.length; i++) value[i] /= ampSum;
+
+        // Порог = квантиль распределения значений → частота соблюдается точно
+        const sorted = Float32Array.from(value).sort();
+        const n = sorted.length;
+        const idx = Math.floor((1 - f) * n);
+        const threshold = idx >= n ? sorted[n - 1] + 1e-6 : sorted[idx];
+        const data = new Uint8Array(n);
+        for (let i = 0; i < n; i++) data[i] = value[i] >= threshold ? 1 : 0;
+        return { w, h, data };
+    }
+
+    // ── МАНИФЕСТ И ФАЙЛ КАРТЫ (JSON) ──────────────────────────────────────────
+    function assertFormat(obj, expected, what) {
+        if (!obj || obj.format !== expected) {
+            throw new Error(`dualgrid: это не ${what} (format: ${obj && obj.format}, ожидался ${expected})`);
+        }
+    }
+
+    // Манифест — описание ГЕНЕРАЦИИ: движок сам строит карту по параметрам
+    function makeManifest({ width, height, seed = 1, layers }) {
+        if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) {
+            throw new Error("dualgrid.makeManifest: width/height должны быть целыми ≥ 1");
+        }
+        if (!Array.isArray(layers) || layers.length === 0) {
+            throw new Error("dualgrid.makeManifest: нужен непустой массив layers");
+        }
+        return {
+            format: "dualgrid-manifest",
+            version: 1,
+            width,
+            height,
+            seed: seed ?? 1,
+            layers: layers.map((l) => {
+                const out = {
+                    texture: l.texture,
+                    frequency: clampPercent(l.frequency ?? 30),
+                    scatter: clampPercent(l.scatter ?? 50),
+                    outside: (l.outside ?? 0) ? 1 : 0,
+                    hideBackground: !!l.hideBackground,
+                };
+                if (l.layout) out.layout = l.layout;
+                if (l.png) out.png = l.png;
+                return out;
+            }),
+        };
+    }
+
+    // Файл карты — ГОТОВАЯ карта: движок только загружает и отрисовывает
+    function makeMap({ width, height, layers, tileSize = null }) {
+        if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) {
+            throw new Error("dualgrid.makeMap: width/height должны быть целыми ≥ 1");
+        }
+        if (!Array.isArray(layers) || layers.length === 0) {
+            throw new Error("dualgrid.makeMap: нужен непустой массив layers");
+        }
+        return {
+            format: "dualgrid-map",
+            version: 1,
+            tileSize,
+            width,
+            height,
+            layers: layers.map((l) => {
+                if (!l.data || l.data.length !== width * height) {
+                    throw new Error(`dualgrid.makeMap: data слоя «${l.texture}» должна быть длиной width*height`);
+                }
+                const out = {
+                    texture: l.texture,
+                    data: Array.from(l.data, (v) => (v ? 1 : 0)),
+                    outside: (l.outside ?? 0) ? 1 : 0,
+                    hideBackground: !!l.hideBackground,
+                };
+                if (l.layout) out.layout = l.layout;
+                if (l.png) out.png = l.png;
+                return out;
+            }),
+        };
+    }
+
+    // Найти текстуру слоя: точное имя → базовое имя файла → встроенный png (data URL)
+    function loadTexture(name, embeddedPng, textures) {
+        if (textures) {
+            if (textures[name]) return textures[name];
+            const base = String(name).split(/[\\/]/).pop().toLowerCase();
+            for (const key of Object.keys(textures)) {
+                if (String(key).split(/[\\/]/).pop().toLowerCase() === base) return textures[key];
+            }
+        }
+        if (embeddedPng) {
+            return new Promise((resolve, reject) => {
+                const image = new Image();
+                image.onload = () => {
+                    const tex = PIXI.Texture.from(image);
+                    tex.source.scaleMode = "nearest";
+                    resolve(tex);
+                };
+                image.onerror = () => reject(new Error(`dualgrid: не удалось загрузить встроенный png «${name}»`));
+                image.src = embeddedPng;
+            });
+        }
+        return Promise.reject(new Error(`dualgrid: текстура «${name}» не найдена — ` +
+            `передайте справочник textures или вставьте png (base64) в файл`));
+    }
+
+    function normalizeMapData(data, w, h, name) {
+        if (!data || data.length !== w * h) {
+            throw new Error(`dualgrid: data слоя «${name}» должна быть длиной ${w * h}`);
+        }
+        return Uint8Array.from(data, (v) => (v ? 1 : 0));
+    }
+
+    // Построить стек слоёв по манифесту (генерация). textures — { "имя.png": Texture }.
+    async function mapFromManifest(manifest, textures) {
+        assertFormat(manifest, "dualgrid-manifest", "манифест dualgrid");
+        const w = manifest.width, h = manifest.height;
+        const root = new PIXI.Container();
+        const result = { root, layers: [], maps: [], w, h };
+        let i = 0;
+        for (const l of manifest.layers) {
+            // Сид слоя детерминирован (совпадает с редактором и между запусками)
+            const map = generateMap({
+                w, h,
+                seed: `${manifest.seed ?? 1}:${i}:${l.texture ?? i}`,
+                frequency: l.frequency,
+                scatter: l.scatter,
+            });
+            const texture = await loadTexture(l.texture, l.png, textures);
+            const layer = build({
+                texture,
+                map,
+                outside: l.outside,
+                layout: l.layout || TILE_CORNERS,
+                hideBackground: l.hideBackground,
+            });
+            root.addChild(layer);
+            result.layers.push(layer);
+            result.maps.push(map);
+            i++;
+        }
+        return result;
+    }
+
+    // Построить стек слоёв из готового файла карты (без генерации)
+    async function mapFromJSON(mapJson, textures) {
+        assertFormat(mapJson, "dualgrid-map", "файл карты dualgrid");
+        const w = mapJson.width, h = mapJson.height;
+        const root = new PIXI.Container();
+        const result = { root, layers: [], maps: [], w, h };
+        for (const l of mapJson.layers) {
+            const map = { w, h, data: normalizeMapData(l.data, w, h, l.texture) };
+            const texture = await loadTexture(l.texture, l.png, textures);
+            const layer = build({
+                texture,
+                map,
+                outside: l.outside,
+                layout: l.layout || TILE_CORNERS,
+                hideBackground: l.hideBackground,
+            });
+            root.addChild(layer);
+            result.layers.push(layer);
+            result.maps.push(map);
+        }
+        return result;
+    }
+
+    return { build, update, tileIndex, detectLayout, generateMap, makeManifest, makeMap,
+             mapFromManifest, mapFromJSON, TILE_CORNERS };
 }
 
 export { createDualGrid };
