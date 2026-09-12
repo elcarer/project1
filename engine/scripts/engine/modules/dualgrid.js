@@ -40,6 +40,9 @@
 //     layers: [{ texture, frequency, scatter, outside, hideBackground, layout? }] }
 //   frequency — процент ячеек «фичи» (0..100, выдерживается точно квантилем шума),
 //   scatter — «разброс»: 0 — крупные материки, 100 — мелкие островки.
+//   margin — зазор слоя (клеток, default 3) до «фич» НИЖНИХ слоёв с ДРУГИМ тайлсетом:
+//   у разных тайлсетов нет общего перехода, и стык рисуется прямыми срезами спрайтов —
+//   поэтому между землёй и водой при генерации всегда остаётся полоса травы ≥ margin.
 //   makeManifest({...}) собирает объект с умолчаниями и проверкой,
 //   mapFromManifest(манифест, textures) → Promise<{ root, layers, maps }> — стек слоёв.
 //   Сид каждого слоя детерминирован: hashSeed(`${seed}:${индекс}:${texture}`) —
@@ -96,6 +99,11 @@ function hashSeed(str) {
 function clampPercent(v) {
     const n = Math.round(Number(v));
     return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
+}
+
+function clampMargin(v) {
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) ? Math.max(0, Math.min(64, n)) : 3;
 }
 
 // Smoothstep — сглаживание интерполяции шума
@@ -325,6 +333,47 @@ function createDualGrid() {
         return { w, h, data };
     }
 
+    // Расширить маску на times клеток (8 соседей → дистанция Чебышёва)
+    function dilateMask(data, w, h, times) {
+        let cur = Uint8Array.from(data);
+        for (let t = 0; t < times; t++) {
+            const next = Uint8Array.from(cur);
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    if (cur[y * w + x]) continue;
+                    let hit = false;
+                    for (let dy = -1; dy <= 1 && !hit; dy++) {
+                        for (let dx = -1; dx <= 1 && !hit; dx++) {
+                            const nx = x + dx, ny = y + dy;
+                            if (nx >= 0 && ny >= 0 && nx < w && ny < h && cur[ny * w + nx]) hit = true;
+                        }
+                    }
+                    if (hit) next[y * w + x] = 1;
+                }
+            }
+            cur = next;
+        }
+        return cur;
+    }
+
+    // Раздвижка слоёв: стереть в data ячейки ближе margin клеток до «фич» блокеров.
+    // У тайлсетов разных местностей нет общего перехода — стык рисуется прямым
+    // срезом спрайтов, поэтому между ними остаётся полоса фона (травы) ≥ margin.
+    function separateLayer(data, blockers, margin, w, h) {
+        const out = Uint8Array.from(data);
+        const m = Math.max(0, Math.round(Number(margin) || 0));
+        const list = (blockers || []).filter(Boolean);
+        if (!m || !list.length) return out;
+        let blocked = null;
+        for (const b of list) {
+            const d = dilateMask(b, w, h, m);
+            if (!blocked) blocked = d;
+            else for (let i = 0; i < blocked.length; i++) blocked[i] = blocked[i] || d[i];
+        }
+        for (let i = 0; i < out.length; i++) if (blocked[i]) out[i] = 0;
+        return out;
+    }
+
     // ── МАНИФЕСТ И ФАЙЛ КАРТЫ (JSON) ──────────────────────────────────────────
     function assertFormat(obj, expected, what) {
         if (!obj || obj.format !== expected) {
@@ -351,6 +400,7 @@ function createDualGrid() {
                     texture: l.texture,
                     frequency: clampPercent(l.frequency ?? 30),
                     scatter: clampPercent(l.scatter ?? 50),
+                    margin: clampMargin(l.margin ?? 3),
                     outside: (l.outside ?? 0) ? 1 : 0,
                     hideBackground: !!l.hideBackground,
                 };
@@ -430,15 +480,31 @@ function createDualGrid() {
         const w = manifest.width, h = manifest.height;
         const root = new PIXI.Container();
         const result = { root, layers: [], maps: [], w, h };
+        const lowerMasks = []; // финальные маски нижних слоёв: [texture, data]
         let i = 0;
         for (const l of manifest.layers) {
-            // Сид слоя детерминирован (совпадает с редактором и между запусками)
-            const map = generateMap({
-                w, h,
-                seed: `${manifest.seed ?? 1}:${i}:${l.texture ?? i}`,
-                frequency: l.frequency,
-                scatter: l.scatter,
-            });
+            const seedLayer = `${manifest.seed ?? 1}:${i}:${l.texture ?? i}`;
+            const margin = clampMargin(l.margin ?? 3);
+            // Зазор до нижних слоёв с ДРУГИМ тайлсетом: у них нет общего перехода,
+            // стык «фича в фичу» рисуется прямыми срезами спрайтов
+            const blockers = lowerMasks.filter(([tex]) => tex !== (l.texture ?? i)).map(([, mask]) => mask);
+            const target = clampPercent(l.frequency) / 100;
+
+            // Частота выдерживается ПОСЛЕ раздвижки: если зазор съел часть слоя,
+            // поднимаем входную частоту и перегенерируем (детерминированно, тот же сид).
+            // got монотонно растёт с freq → сходимость; при 100% берём максимум возможного.
+            let freq = clampPercent(l.frequency ?? 30);
+            let map = null;
+            for (let attempt = 0; attempt < 10; attempt++) {
+                const raw = generateMap({ w, h, seed: seedLayer, frequency: freq, scatter: l.scatter });
+                map = { w, h, data: separateLayer(raw.data, blockers, margin, w, h) };
+                let got = 0;
+                for (let k = 0; k < map.data.length; k++) got += map.data[k];
+                got /= w * h;
+                if (!blockers.length || got >= target * 0.92 || freq >= 100 || target === 0) break;
+                freq = clampPercent(Math.min(100, Math.ceil(freq * Math.min(3, target / Math.max(got, 0.005)) + 2)));
+            }
+
             const texture = await loadTexture(l.texture, l.png, textures);
             const layer = build({
                 texture,
@@ -450,6 +516,7 @@ function createDualGrid() {
             root.addChild(layer);
             result.layers.push(layer);
             result.maps.push(map);
+            lowerMasks.push([l.texture ?? i, map.data]);
             i++;
         }
         return result;
@@ -478,8 +545,8 @@ function createDualGrid() {
         return result;
     }
 
-    return { build, update, tileIndex, detectLayout, generateMap, makeManifest, makeMap,
-             mapFromManifest, mapFromJSON, TILE_CORNERS };
+    return { build, update, tileIndex, detectLayout, generateMap, separateLayer, dilateMask,
+             makeManifest, makeMap, mapFromManifest, mapFromJSON, TILE_CORNERS };
 }
 
 // Подключение двумя способами (файл без import/export валиден и как ES-модуль):

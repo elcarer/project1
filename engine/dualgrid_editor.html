@@ -174,7 +174,10 @@
             <label class="lbl">разброс <span class="val" id="scatVal"></span>
                 <input id="rngScatter" type="range" min="0" max="100" value="50">
             </label>
-            <div class="small muted">0% — крупные материки, 100% — мелкие островки; применяется кнопкой «🎲 Сгенерировать»</div>
+            <label class="lbl" title="минимум клеток травы до нижних слоёв с другим тайлсетом — иначе стык даст прямые срезы спрайтов">зазор до нижних <span class="val" id="gapVal"></span>
+                <input id="rngGap" type="range" min="0" max="10" value="3">
+            </label>
+            <div class="small muted">0% — крупные материки, 100% — мелкие островки; применяется кнопкой «🎲 Сгенерировать» (зазор — тоже: верхний слой отодвигается от нижних с другим тайлсетом)</div>
             <label style="margin-top:8px"><input id="chkHideBg" type="checkbox"> скрывать фон (наслаивание)</label>
             <label>вне карты: <select id="selOutside">
                 <option value="0">0 — фон</option>
@@ -346,7 +349,7 @@ function snapshot() {
     return {
         w: state.w, h: state.h, seed: state.seed, active: state.active,
         layers: state.layers.map((l) => ({ name: l.name, texture: l.texture,
-            frequency: l.frequency, scatter: l.scatter, outside: l.outside,
+            frequency: l.frequency, scatter: l.scatter, margin: l.margin, outside: l.outside,
             hideBackground: l.hideBackground, visible: l.visible, layout: l.layout,
             data: l.data.slice() })),
     };
@@ -415,6 +418,27 @@ function drawOverlay() {
         }
     });
     g.alpha = 1;
+    // Нарушения зазора: ячейки верхнего слоя ближе margin к «фичам» нижнего слоя
+    // с ДРУГИМ тайлсетом — стык рисуется прямыми срезами спрайтов (красная подсветка)
+    state.layers.forEach((l, i) => {
+        if (!l.visible || !l.margin) return;
+        const blockers = [];
+        for (let k = 0; k < i; k++) {
+            if (state.layers[k].visible && state.layers[k].name !== l.name) blockers.push(state.layers[k].data);
+        }
+        if (!blockers.length) return;
+        let blocked = null;
+        for (const b of blockers) {
+            const d = dual.dilateMask(b, state.w, state.h, l.margin);
+            if (!blocked) blocked = d;
+            else for (let j = 0; j < blocked.length; j++) blocked[j] = blocked[j] || d[j];
+        }
+        for (let y = 0; y < state.h; y++) for (let x = 0; x < state.w; x++) {
+            if (l.data[y * state.w + x] && blocked[y * state.w + x]) {
+                g.rect(x * TS, y * TS, TS, TS).fill({ color: 0xff4a3c, alpha: 0.30 });
+            }
+        }
+    });
     for (let x = 0; x <= state.w; x++) {
         g.moveTo(x * TS, 0).lineTo(x * TS, state.h * TS).stroke({ width: 1, color: 0xffffff, alpha: 0.09 });
     }
@@ -532,7 +556,7 @@ function refreshLayersPanel() {
         name.textContent = l.name;
         const params = document.createElement("span");
         params.className = "lparams";
-        params.textContent = `${l.frequency}% / р${l.scatter}${l.hideBackground ? " · bg✕" : ""}`;
+        params.textContent = `${l.frequency}% / р${l.scatter}${l.margin ? " / з" + l.margin : ""}${l.hideBackground ? " · bg✕" : ""}`;
         li.append(eye, name, params);
         li.onclick = () => { state.active = i; refreshAll(); };
         ul.appendChild(li);
@@ -541,7 +565,8 @@ function refreshLayersPanel() {
 function refreshLayerProps() {
     const l = activeLayer();
     $("layerName").textContent = l ? l.name : "—";
-    $("rngFreq").disabled = $("rngScatter").disabled = $("chkHideBg").disabled =
+    $("rngFreq").disabled = $("rngScatter").disabled = $("rngGap").disabled =
+        $("chkHideBg").disabled =
         $("selOutside").disabled = $("btnFillLayer").disabled = $("btnClearLayer").disabled =
         $("btnInvertLayer").disabled = $("btnLayerDel").disabled = $("btnLayerUp").disabled =
         $("btnLayerDown").disabled = $("btnGenerate").disabled = !l;
@@ -550,6 +575,8 @@ function refreshLayerProps() {
     $("freqVal").textContent = l.frequency + "%";
     $("rngScatter").value = l.scatter;
     $("scatVal").textContent = l.scatter + "%";
+    $("rngGap").value = l.margin;
+    $("gapVal").textContent = l.margin + " кл";
     $("chkHideBg").checked = l.hideBackground;
     $("selOutside").value = String(l.outside);
 }
@@ -596,7 +623,7 @@ function addLayer(name, props = {}, withUndo = true) {
     if (withUndo) pushUndo();
     const l = {
         name, texture: textures[name],
-        frequency: 30, scatter: 50, outside: 0, hideBackground: false, visible: true,
+        frequency: 30, scatter: 50, margin: 3, outside: 0, hideBackground: false, visible: true,
         layout: detectLayoutSafe(name),
         data: new Uint8Array(state.w * state.h),
         ...props,
@@ -635,7 +662,7 @@ function manifestObject(embed = false) {
     return dual.makeManifest({
         width: state.w, height: state.h, seed: state.seed,
         layers: state.layers.map((l) => ({
-            texture: l.name, frequency: l.frequency, scatter: l.scatter,
+            texture: l.name, frequency: l.frequency, scatter: l.scatter, margin: l.margin,
             outside: l.outside, hideBackground: l.hideBackground, layout: l.layout,
             ...(embed && images[l.name] ? { png: imageToDataURL(images[l.name]) } : {}),
         })),
@@ -661,7 +688,7 @@ async function generateAll(withUndo = true) {
     }
     state.sel = null; state.paste = null;
     rebuildRoot(); refreshAll(); selfTest();
-    msg("сгенерировано по манифесту (частота/разброс слоёв)");
+    msg("сгенерировано по манифесту (частота/разброс, зазор между разными тайлсетами)");
 }
 
 // ── ЗАГРУЗКА JSON (манифест | файл карты) ────────────────────────────────────
@@ -706,7 +733,7 @@ async function applyManifest(obj) {
             const tex = await resolveTexture(ml.texture, ml.png);
             newLayers.push({
                 name: baseName(ml.texture), texture: tex,
-                frequency: ml.frequency ?? 30, scatter: ml.scatter ?? 50,
+                frequency: ml.frequency ?? 30, scatter: ml.scatter ?? 50, margin: ml.margin ?? 3,
                 outside: ml.outside ?? 0, hideBackground: !!ml.hideBackground,
                 visible: true, layout: ml.layout || dual.TILE_CORNERS,
                 data: new Uint8Array(state.w * state.h),
@@ -731,7 +758,7 @@ async function applyMapFile(obj) {
             }
             const l = {
                 name: baseName(ml.texture), texture: tex,
-                frequency: 30, scatter: 50,
+                frequency: 30, scatter: 50, margin: ml.margin ?? 3,
                 outside: ml.outside ?? 0, hideBackground: !!ml.hideBackground,
                 visible: true, layout: ml.layout || dual.TILE_CORNERS,
                 data: Uint8Array.from(ml.data, (v) => (v ? 1 : 0)),
@@ -1058,6 +1085,7 @@ $("btnLayerUp").onclick = () => moveLayer(+1);
 $("btnLayerDown").onclick = () => moveLayer(-1);
 $("rngFreq").oninput = (e) => { const l = activeLayer(); if (!l) return; l.frequency = Number(e.target.value); $("freqVal").textContent = l.frequency + "%"; refreshLayersPanel(); };
 $("rngScatter").oninput = (e) => { const l = activeLayer(); if (!l) return; l.scatter = Number(e.target.value); $("scatVal").textContent = l.scatter + "%"; refreshLayersPanel(); };
+$("rngGap").oninput = (e) => { const l = activeLayer(); if (!l) return; l.margin = Number(e.target.value); $("gapVal").textContent = l.margin + " кл"; refreshLayersPanel(); drawOverlay(); };
 $("chkHideBg").onchange = (e) => {
     const l = activeLayer(); if (!l) return;
     l.hideBackground = e.target.checked;
