@@ -1,6 +1,7 @@
 {
   "size": 128,
   "columns": 5,
+  "fps": 8,
   "animations": [
     {
       "name": "wait",
@@ -35,7 +36,7 @@
     {
       "name": "attack_back",
       "row": 6,
-      "frames": 4
+      "frames": 3
     },
     {
       "name": "attack_right",
@@ -55,7 +56,7 @@
     {
       "name": "damage",
       "row": 10,
-      "frames": 2
+      "frames": 4
     }
   ]
 }
