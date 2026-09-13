@@ -224,6 +224,20 @@
         <button id="btnZoomIn">➕</button>
         <button id="btnFit">⤢ вписать</button>
         <label><input id="chkGrid" type="checkbox" checked> сетка данных</label>
+        <span class="group" title="густота растительности мира (применяется «🌍 Сгенерировать мир»)">
+            <label style="font-size:12px" title="плотность посадки деревьев в чаще леса">чаща
+                <input id="rngCoreDen" type="range" min="0" max="60" value="30" style="width:64px">
+                <span class="muted" style="font-family:Consolas,monospace;font-size:11px" id="coreDenVal">30%</span></label>
+            <label style="font-size:12px" title="плотность посадки на опушке">опушка
+                <input id="rngEdgeDen" type="range" min="0" max="30" value="7" style="width:64px">
+                <span class="muted" style="font-family:Consolas,monospace;font-size:11px" id="edgeDenVal">7%</span></label>
+            <label style="font-size:12px" title="порог лесного шума, где начинается опушка (выше — лесов меньше)">опушка от
+                <input id="rngEdgeT" type="range" min="20" max="80" value="42" style="width:64px">
+                <span class="muted" style="font-family:Consolas,monospace;font-size:11px" id="edgeTVal">0.42</span></label>
+            <label style="font-size:12px" title="порог лесного шума, где начинается чаща (ядро леса)">чаща от
+                <input id="rngCoreT" type="range" min="45" max="90" value="62" style="width:64px">
+                <span class="muted" style="font-family:Consolas,monospace;font-size:11px" id="coreTVal">0.62</span></label>
+        </span>
     </div>
 </header>
 <main>
@@ -361,6 +375,8 @@ const state = {
     tab: "ground",         // «Земля» | «Объекты»
     objSel: 0,             // выбранный объект палитры (индекс)
     objects: { density: 12, avoidHideBg: true, placements: [] },  // [[t, x, y], …]
+    world: null,           // { pois } последней генерации мира
+    worldParams: { coreDen: 30, edgeDen: 7, edgeT: 42, coreT: 62 }, // ползунки чащи/опушки
 };
 const textures = {};       // реестр: "имя.png" → PIXI.Texture (для JSON-загрузки)
 const images = {};         // реестр: "имя.png" → Image|ImageBitmap (палитра/детект)
@@ -1131,8 +1147,11 @@ async function generateWorldMap(withUndo = true) {
     try {
         world = dual.generateWorld({ w, h, seed: state.seed });
         if (objHolder && objItems.length) {
+            const wp = state.worldParams;
             obj = dual.generateWorldObjects({ w, h, seed: state.seed, masks: world.masks,
                 climate: world.climate,
+                tuning: { coreDen: wp.coreDen / 100, edgeDen: wp.edgeDen / 100,
+                          edgeT: wp.edgeT / 100, coreT: wp.coreT / 100 },
                 items: objItems.map((it) => ({ name: it.name, group: it.group, weight: it.weight,
                     cellsX: it.cellsX, cellsY: it.cellsY, pass: it.pass })) });
         }
@@ -1632,6 +1651,26 @@ $("btnWorld").onclick = () => {
     state.seed = Number($("inpSeed").value) || 0;
     resizeMap($("inpW").value, $("inpH").value);
     generateWorldMap();
+};
+// ползунки густоты растительности мира (применяются «🌍 Сгенерировать мир»)
+$("rngCoreDen").oninput = (e) => { state.worldParams.coreDen = Number(e.target.value); $("coreDenVal").textContent = e.target.value + "%"; };
+$("rngEdgeDen").oninput = (e) => { state.worldParams.edgeDen = Number(e.target.value); $("edgeDenVal").textContent = e.target.value + "%"; };
+$("rngEdgeT").oninput = (e) => {
+    state.worldParams.edgeT = Number(e.target.value);
+    if (state.worldParams.coreT < state.worldParams.edgeT + 5) { // чаща не ниже опушки
+        state.worldParams.coreT = state.worldParams.edgeT + 5;
+        $("rngCoreT").value = state.worldParams.coreT;
+        $("coreTVal").textContent = (state.worldParams.coreT / 100).toFixed(2);
+    }
+    $("edgeTVal").textContent = (state.worldParams.edgeT / 100).toFixed(2);
+};
+$("rngCoreT").oninput = (e) => {
+    state.worldParams.coreT = Number(e.target.value);
+    if (state.worldParams.coreT < state.worldParams.edgeT + 5) { // не ниже опушки
+        e.target.value = state.worldParams.edgeT + 5;
+        state.worldParams.coreT = state.worldParams.edgeT + 5;
+    }
+    $("coreTVal").textContent = (state.worldParams.coreT / 100).toFixed(2);
 };
 $("btnSaveManifest").onclick = saveManifest;
 $("btnSaveMap").onclick = saveMap;

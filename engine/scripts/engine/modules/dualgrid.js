@@ -829,8 +829,18 @@ function createDualGrid() {
     // сгущённым поиском с минимальной дистанцией (упрощённый blue-noise), кластерная
     // расстановка вокруг центра, затем амбиент по биомам ячеек (север — снежные
     // объекты, юг — камни и кости, середина — лес с полянами). items: [{ name,
-    // group?, weight?, cellsX, cellsY }] в порядке индексов реестра.
-    function generateWorldObjects({ w, h, seed = 1, masks, climate = null, items, ts = 32 }) {
+    // group?, weight?, cellsX, cellsY, pass? }] в порядке индексов реестра.
+    // tuning (необязательно, 0..1) — ручки густоты растительности редактора:
+    // coreDen/edgeDen — плотность посадки в чаще/на опушке, edgeT/coreT — пороги
+    // лесного шума «где начинается опушка/чаща».
+    function generateWorldObjects({ w, h, seed = 1, masks, climate = null, items, ts = 32,
+                                    tuning = {} }) {
+        const pick01 = (v, d) => (typeof v === "number" && Number.isFinite(v))
+            ? Math.min(0.95, Math.max(0, v)) : d;
+        const coreDen = pick01(tuning.coreDen, 0.30);
+        const edgeDen = pick01(tuning.edgeDen, 0.07);
+        const edgeT = pick01(tuning.edgeT, 0.42);
+        const coreT = Math.max(edgeT + 0.05, pick01(tuning.coreT, 0.62));
         if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1) {
             throw new Error("dualgrid.generateWorldObjects: размеры должны быть целыми ≥ 1");
         }
@@ -1049,8 +1059,8 @@ function createDualGrid() {
                 if ((water && water[k]) || occupied[k] || clearing[k]) continue;
                 if (biomeAt(x, y) !== "grass") continue;
                 const F = forest[k];
-                if (F <= 0.42) continue;                          // лес: чаща + опушка
-                const den = F > 0.62 ? 0.06 : 0.012;
+                if (F <= edgeT) continue;                         // лес: чаща + опушка
+                const den = F > coreT ? coreDen * 0.2 : edgeDen * 0.17; // полог пропорционален
                 if (rng() >= den) continue;
                 const stands = vegZoneStands(k);
                 const stand = stands[Math.min(stands.length - 1, Math.floor(standRank[k] * stands.length))];
@@ -1080,9 +1090,9 @@ function createDualGrid() {
                     continue;
                 }
                 const F = forest[k];
-                const core = F > 0.62, edge = !core && F > 0.42;      // чаща / опушка
+                const core = F > coreT, edge = !core && F > edgeT;    // чаща / опушка
                 const glade = core && gladeRank[k] > 0.9;             // поляна в чаще
-                let den = core ? 0.30 : edge ? 0.07 : 0;              // чаща гуще, луг — комками
+                let den = core ? coreDen : edge ? edgeDen : 0;        // градиент плотности
                 if (glade) den = 0.05;
                 if (!core && !edge) { // луг: куртины трав/цветов, голые прогалины,
                     const clump = gladeRank[k] > 0.6;                 // редкое одиночное дерево
