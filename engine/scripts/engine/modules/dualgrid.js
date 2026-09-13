@@ -763,6 +763,68 @@ function createDualGrid() {
                        "stones_drygrass", "amphora_broken", "jug_shards"],
     };
 
+    // Растительные сообщества («лесные массивы»): в природе деревья одного вида
+    // растут кластерами-патчами (ограничение разлёта семян), массив имеет доминанта
+    // и спутников, внутри — градиент плотности (чаща/опушка) и поляны. Посадка
+    // ДВУХПРОХОДНАЯ, как в реальном лесу: сначала полог из крупных деревьев стенда
+    // (canopy), затем мелкие деревья и подлесок (trees/floor) — иначе гиганты
+    // (дуб 8×8…10×11 клеток) проигрывают footprint-конкуренцию мелким берёзам.
+    // Парковые/магические деревья (сакура, бонсай, топиар) в амбиент не входят.
+    const WORLD_VEG = {
+        // Умеренная зона (середина карты)
+        temperate: [
+            { canopy: ["tree_oak_big", "tree_oak_grove", "tree_oak_rock"],
+              trees: ["tree_lush", "tree_round", "tree_small"],                      // дубрава
+              comp: ["tree_birch_young"],
+              floor: ["leaf_big", "leaves_pair", "mushrooms_red", "mushrooms_red_m",
+                      "moss", "bush_berry", "bush_leafy"] },
+            { canopy: ["tree_birch", "tree_white_tall", "tree_white_wide"],
+              trees: ["tree_birch_young", "tree_birch_dark", "tree_small"],          // берёзовая роща
+              comp: [],
+              floor: ["flowers_white", "grass_tuft", "moss_patch", "bush_wild"] },
+            { canopy: ["tree_lush", "tree_white_tall", "tree_tall_thicket", "tree_thicket"],
+              trees: ["tree_round", "tree_small", "tree_bush_tall", "tree_mint"],    // смешанный лес
+              comp: ["tree_birch"],
+              floor: ["bush_round", "bush_leafy", "mushrooms_red", "moss_mounds",
+                      "flowers_pink", "grass_wild"] },
+            { canopy: ["tree_spruce_tall", "tree_spruce_fluffy", "tree_cone"],
+              trees: ["tree_pine", "tree_birch_young"],                              // хвойный лес
+              comp: [],
+              floor: ["pinecones", "pinecones_pair", "pinecones_scatter",
+                      "sprout_conifer", "bush_mossy_pair", "moss_bed"] },
+        ],
+        // Тайга (холодный пояс, на травяных клетках севера)
+        taiga: [
+            { canopy: ["tree_spruce_tall", "tree_spruce_fluffy"],
+              trees: ["tree_pine", "tree_birch_young"],                              // ельники
+              comp: [],
+              floor: ["pinecones", "moss", "sprout_conifer", "bush_mossy_pair"] },
+            { canopy: ["tree_birch", "tree_white_tall"],
+              trees: ["tree_birch_young", "tree_birch_dark"],                        // берёзняки-пионеры
+              comp: [],
+              floor: ["grass_tuft", "moss_patch", "bush_wild"] },
+            { canopy: ["tree_dead_big"],
+              trees: ["tree_snag", "snag_branchy", "snag_bare"],                     // редкий сухостой
+              comp: ["stump_mossy", "stump_hollow_moss"],
+              floor: ["moss", "grass_tuft"] },
+        ],
+        // Сухой пояс (переход к пустыне)
+        dry: [
+            { canopy: ["tree_twisted"],
+              trees: ["tree_dead_sparse", "snag_thin", "scrub_brown", "bush_mound"], // ксерофиты
+              comp: [],
+              floor: ["grass_dry", "brush_dry", "flowers_dry", "grass_silver"] },
+            { canopy: ["tree_palm", "palm_tall"],
+              trees: ["bush_round_dark", "grass_dry"],                               // пальмовая роща
+              comp: [],
+              floor: ["grass_dry", "brush_dry_small"] },
+            { canopy: [],
+              trees: ["scrub_brown", "scrub_low", "bush_mound"],                     // колючий скраб
+              comp: ["grass_silver", "tree_dead_small"],
+              floor: ["grass_dry", "reeds_dry"] },
+        ],
+    };
+
     // Логичная расстановка объектов мира: точки интереса (деревни, руины, костища)
     // сгущённым поиском с минимальной дистанцией (упрощённый blue-noise), кластерная
     // расстановка вокруг центра, затем амбиент по биомам ячеек (север — снежные
@@ -910,7 +972,10 @@ function createDualGrid() {
             markClearing(s.x, s.y, 8);
         }
 
-        // 2) Амбиент по биомам. Палитра: список [индекс, вес] с групповым множителем.
+        // 3) Амбиент травяного биома — растительные сообщества. Поля:
+        //    forest — где лес вообще растёт (чаща/опушка/луг), stand — какой стенд
+        //    (вид-доминант) занимает место, glade — поляны внутри чащи,
+        //    shore — береговая полоса (ивы и камыш у воды).
         const byGroup = (group) => items.map((it, i) => (it.group === group ? i : -1)).filter((i) => i >= 0);
         const weighted = (list, gw) => list.map((t) => [t, weightOf(t) * gw]);
         const poolSnow = weighted(byGroup("snow"), 1);
@@ -919,26 +984,92 @@ function createDualGrid() {
             ...weighted(resolve(WORLD_OBJ_NAMES.bones), 2),
             ...weighted(resolve(WORLD_OBJ_NAMES.desertTrees), 1.2),
             ...weighted(resolve(WORLD_OBJ_NAMES.desertTrash), 0.8),
+            ...weighted(resolve(["scrub_brown", "grass_dry", "flowers_dry"]), 0.7),
         ];
-        const poolGrass = [
-            ...weighted(byGroup("trees"), 3),
-            ...weighted(byGroup("bushes"), 1.5),
-            ...weighted(byGroup("plants"), 1.5),
-            ...weighted(byGroup("stones"), 0.6),
-            ...weighted(resolve(WORLD_OBJ_NAMES.forestFloor), 0.9),
-        ];
+        // луг: дикие травы и цветы (мох/шишки/сухостой — подлесок леса, горшки и
+        // клумбы — садовое, в дикой природе не растут)
+        const isGarden = (nm) => /pot|planter|crate/.test(nm);
+        const poolMeadow = weighted(byGroup("plants").filter((t) =>
+            !/moss|pinecone|dry/.test(items[t].name) && !isGarden(items[t].name)), 2);
+        const loneMeadow = resolve(["tree_oak_meadow", "tree_small", "tree_willow_small"])
+            .map((t) => [t, 1]);
+        const bushPool = resolve(["bush_round", "bush_round_dark", "bush_double", "bush_leafy",
+                                  "bush_wild", "bush_round_big", "bush_green", "bush_berry"])
+            .map((t) => [t, 1]);
+        const willowPool = resolve(["tree_willow", "willow_white", "tree_willow_small"])
+            .map((t) => [t, 3]);
+        const reedPool = resolve(["grass_reeds", "reeds_big", "grass_sedge"]).map((t) => [t, 1]);
         const forest = rankNormalize(fbmField(w, h, rng, Math.max(3, Math.round(Math.min(w, h) / 26))));
+        const standRank = rankNormalize(fbmField(w, h, rng, Math.max(4, Math.round(Math.min(w, h) / 12))));
+        const gladeRank = rankNormalize(fbmField(w, h, rng, Math.max(6, Math.round(Math.min(w, h) / 16))));
+        // Берега: трава в 2 клетках от воды (ивы, камыш), сама вода исключена
+        const shore = water ? dilateMask(water, w, h, 2) : null;
+        // Стенд зоны: массив сообществ зависит от климатической фазы клетки
+        const vegZoneStands = (k) => snowZone && snowZone[k] > 0.4 ? WORLD_VEG.taiga
+            : sandZone && sandZone[k] > 0.45 ? WORLD_VEG.dry : WORLD_VEG.temperate;
+
+        // Проход 1 — ПОЛОГ: крупные деревья стенда занимают место первыми
+        // (в реальном лесу подрост развивается под пологом, а не наоборот)
         for (let y = 0; y < h; y++) {
             for (let x = 0; x < w; x++) {
                 const k = y * w + x;
                 if ((water && water[k]) || occupied[k] || clearing[k]) continue;
-                let den, pool;
-                const b = biomeAt(x, y);
-                if (b === "snow") { den = 0.055; pool = poolSnow; }
-                else if (b === "desert") { den = 0.045; pool = poolDesert; }
-                else { den = 0.055 + 0.10 * forest[k]; pool = poolGrass; }
+                if (biomeAt(x, y) !== "grass") continue;
+                const F = forest[k];
+                if (F <= 0.42) continue;                          // лес: чаща + опушка
+                const den = F > 0.62 ? 0.045 : 0.012;
                 if (rng() >= den) continue;
-                place(pickFrom(pool), x, y);
+                const stands = vegZoneStands(k);
+                const stand = stands[Math.min(stands.length - 1, Math.floor(standRank[k] * stands.length))];
+                const pool = weighted(resolve(stand.canopy), 1);
+                if (pool.length) place(pickFrom(pool), x, y);
+            }
+        }
+
+        // Проход 2 — подрост, подлесок, луга, берега
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const k = y * w + x;
+                if ((water && water[k]) || occupied[k] || clearing[k]) continue;
+                const b = biomeAt(x, y);
+                if (b === "snow") { // снежный биом — своя палитра (как прежде)
+                    if (rng() < 0.055) place(pickFrom(poolSnow), x, y);
+                    continue;
+                }
+                if (b === "desert") { // пустыня — камни/кости/сухие деревья
+                    if (rng() < 0.045) place(pickFrom(poolDesert), x, y);
+                    continue;
+                }
+                // Ивы и камыш у берега
+                if (shore && shore[k] && rng() < 0.12) {
+                    place(pickFrom(rng() < 0.6 ? willowPool : reedPool), x, y);
+                    continue;
+                }
+                const F = forest[k];
+                const core = F > 0.62, edge = !core && F > 0.42;      // чаща / опушка
+                const glade = core && gladeRank[k] > 0.9;             // поляна в чаще
+                let den = core ? 0.22 : edge ? 0.09 : 0.05;           // градиент плотности
+                if (glade) den = 0.05;
+                if (rng() >= den) continue;
+                if (!core && !edge) { // луг: травы/цветы, редкое одиночное дерево
+                    if (loneMeadow.length && rng() < 0.08) place(pickFrom(loneMeadow), x, y);
+                    else if (poolMeadow.length) place(pickFrom(poolMeadow), x, y);
+                    continue;
+                }
+                const stands = vegZoneStands(k);
+                const stand = stands[Math.min(stands.length - 1, Math.floor(standRank[k] * stands.length))];
+                const treePool = [...weighted(resolve(stand.trees), 3),
+                                  ...weighted(resolve(stand.comp), 1)];
+                const r = rng();
+                if (r < (glade ? 0.15 : core ? 0.55 : 0.5)) {         // подрост стенда:
+                    if (treePool.length) place(pickFrom(treePool), x, y); // доминанты тяжелее
+                } else if (r < (core ? 0.85 : 0.75)) {                // подлесок сообщества
+                    const floorPool = weighted(resolve(stand.floor), 1);
+                    if (floorPool.length) place(pickFrom(floorPool), x, y);
+                    else if (bushPool.length) place(pickFrom(bushPool), x, y);
+                } else if (bushPool.length) {                         // кусты общего пула
+                    place(pickFrom(bushPool), x, y);
+                }
             }
         }
         return { placements, pois };
@@ -1217,7 +1348,8 @@ function createDualGrid() {
     }
 
     return { build, update, tileIndex, detectLayout, generateMap, separateLayer, dilateMask,
-             fbmField, rankNormalize, generateWorld, generateWorldObjects, WORLD_OBJ_NAMES,
+             fbmField, rankNormalize, generateWorld, generateWorldObjects,
+             WORLD_OBJ_NAMES, WORLD_VEG,
              makeManifest, makeMap, mapFromManifest, mapFromJSON, TILE_CORNERS,
              objectRect, objectFootprint, generateObjects,
              buildObjects, syncObjects, placeObject, eraseObjectAt, objectAt,
