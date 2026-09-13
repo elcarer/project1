@@ -832,9 +832,11 @@ function createDualGrid() {
     // group?, weight?, cellsX, cellsY, pass? }] в порядке индексов реестра.
     // tuning (необязательно, 0..1) — ручки густоты растительности редактора:
     // coreDen/edgeDen — плотность посадки в чаще/на опушке, edgeT/coreT — пороги
-    // лесного шума «где начинается опушка/чаща».
+    // лесного шума «где начинается опушка/чаща». noManMade (по умолчанию true) —
+    // дикий мир: без деревень и следов активной человеческой деятельности
+    // (вывески, колодцы, бочки, мебель…); руины, кости и разбитые амфоры остаются.
     function generateWorldObjects({ w, h, seed = 1, masks, climate = null, items, ts = 32,
-                                    tuning = {} }) {
+                                    tuning = {}, noManMade = true }) {
         const pick01 = (v, d) => (typeof v === "number" && Number.isFinite(v))
             ? Math.min(0.95, Math.max(0, v)) : d;
         const coreDen = pick01(tuning.coreDen, 0.30);
@@ -850,6 +852,10 @@ function createDualGrid() {
         const snow = masks && masks["snow_dirt.png"];
         const sand = masks && masks["sand_dirt.png"];
         const snowZone = climate && climate.snowZone, sandZone = climate && climate.sandZone;
+        // рукотворные предметы дикой природы (следы активной деятельности):
+        // вывески, колодцы, бочки, мебель, топиары, горшки… Имена по префиксам.
+        const MAN_MADE = /^(sign|banner|well|table_|easel|chalice|lamp_|pot_|topiary|birdhouse|barrel|crate|planter|fence|anvil|stall|notice|loom|spinning)/;
+        const natural = (t) => !noManMade || !MAN_MADE.test(items[t].name);
         const byName = new Map(items.map((it, i) => [it.name, i]));
         const resolve = (names) => names.map((nm) => byName.get(nm)).filter((v) => v !== undefined);
 
@@ -977,9 +983,10 @@ function createDualGrid() {
             return best;
         }
 
-        // 1) Точки интереса. Количество — от площади карты.
+        // 1) Точки интереса. Количество — от площади карты. Деревни — след
+        // активной человеческой деятельности: в диком мире (noManMade) их нет.
         const area = w * h;
-        const nVillages = Math.max(1, Math.round(area / 26000));
+        const nVillages = noManMade ? 0 : Math.max(1, Math.round(area / 26000));
         const nRuins = Math.max(1, Math.round(area / 34000));
         const nBones = Math.max(1, Math.round(area / 52000));
         for (let k = 0; k < nVillages; k++) {
@@ -1020,7 +1027,7 @@ function createDualGrid() {
         //    shore — береговая полоса (ивы и камыш у воды).
         const byGroup = (group) => items.map((it, i) => (it.group === group ? i : -1)).filter((i) => i >= 0);
         const weighted = (list, gw) => list.map((t) => [t, weightOf(t) * gw]);
-        const poolSnow = weighted(byGroup("snow"), 1);
+        const poolSnow = weighted(byGroup("snow").filter(natural), 1);
         const poolDesert = [
             ...weighted(byGroup("stones"), 3),
             ...weighted(resolve(WORLD_OBJ_NAMES.bones), 2),

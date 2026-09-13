@@ -237,6 +237,7 @@
             <label style="font-size:12px" title="порог лесного шума, где начинается чаща (ядро леса)">чаща от
                 <input id="rngCoreT" type="range" min="45" max="90" value="62" style="width:64px">
                 <span class="muted" style="font-family:Consolas,monospace;font-size:11px" id="coreTVal">0.62</span></label>
+            <label style="font-size:12px" title="дикий мир: только природные объекты — без поселений, вывесок, колодцев, бочек и прочих следов активной человеческой деятельности. Руины, кости и разбитые амфоры остаются"><input id="chkNoMan" type="checkbox" checked> без объектов</label>
         </span>
     </div>
 </header>
@@ -377,6 +378,7 @@ const state = {
     objects: { density: 12, avoidHideBg: true, placements: [] },  // [[t, x, y], …]
     world: null,           // { pois } последней генерации мира
     worldParams: { coreDen: 30, edgeDen: 7, edgeT: 42, coreT: 62 }, // ползунки чащи/опушки
+    worldNoMan: true,      // «без объектов»: дикий мир без следов человеческой деятельности
 };
 const textures = {};       // реестр: "имя.png" → PIXI.Texture (для JSON-загрузки)
 const images = {};         // реестр: "имя.png" → Image|ImageBitmap (палитра/детект)
@@ -1149,7 +1151,7 @@ async function generateWorldMap(withUndo = true) {
         if (objHolder && objItems.length) {
             const wp = state.worldParams;
             obj = dual.generateWorldObjects({ w, h, seed: state.seed, masks: world.masks,
-                climate: world.climate,
+                climate: world.climate, noManMade: state.worldNoMan,
                 tuning: { coreDen: wp.coreDen / 100, edgeDen: wp.edgeDen / 100,
                           edgeT: wp.edgeT / 100, coreT: wp.coreT / 100 },
                 items: objItems.map((it) => ({ name: it.name, group: it.group, weight: it.weight,
@@ -1672,6 +1674,7 @@ $("rngCoreT").oninput = (e) => {
     }
     $("coreTVal").textContent = (state.worldParams.coreT / 100).toFixed(2);
 };
+$("chkNoMan").onchange = (e) => { state.worldNoMan = e.target.checked; };
 $("btnSaveManifest").onclick = saveManifest;
 $("btnSaveMap").onclick = saveMap;
 $("btnExportPng").onclick = exportPNG;
