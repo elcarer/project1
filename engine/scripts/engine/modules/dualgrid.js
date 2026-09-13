@@ -848,6 +848,24 @@ function createDualGrid() {
         const placements = [];
         const pois = [];
 
+        // Опорные клетки типа (ствол/основание): клетки pass-сетки, а без неё —
+        // нижняя строка footprint. МЯГКАЯ посадка (чаща) проверяет и метит только
+        // их: кроны соседних деревьев свободно перекрываются (y-сортировка рисует
+        // ствол переднего на фоне кроны заднего), а жёсткая — весь footprint
+        // (постройки POI не должны врезаться друг в друга).
+        const solids = items.map((it) => {
+            const cx = it.cellsX, cy = it.cellsY, n2 = cx * cy;
+            const pass = (typeof it.pass === "string" && /^[01]*$/.test(it.pass) &&
+                          it.pass.length === n2) ? it.pass : null;
+            const cells = [];
+            for (let r = 0; r < cy; r++) {
+                for (let c = 0; c < cx; c++) {
+                    if (pass ? pass[r * cx + c] === "1" : r === cy - 1) cells.push([c, r]);
+                }
+            }
+            return cells;
+        });
+
         const isLand = (x, y) => x >= 0 && y >= 0 && x < w && y < h && !(water && water[y * w + x]);
         const biomeAt = (x, y) => {
             const k = y * w + x;
@@ -868,11 +886,25 @@ function createDualGrid() {
             }
             return true;
         }
-        function place(t, x, y) {
-            if (!canPlace(t, x, y)) return false;
+        function place(t, x, y, soft = false) {
             const fp = objectFootprint(items[t], x, y, ts);
-            for (let fy = fp.y0; fy <= fp.y1; fy++) {
-                for (let fx = fp.x0; fx <= fp.x1; fx++) occupied[fy * w + fx] = 1;
+            if (fp.x0 < 0 || fp.y0 < 0 || fp.x1 >= w || fp.y1 >= h) return false;
+            if (soft) { // чаща: переплетение крон, заняты только опорные клетки
+                for (const [c, r] of solids[t]) {
+                    const k = (fp.y0 + r) * w + fp.x0 + c;
+                    if (occupied[k] || (water && water[k])) return false;
+                }
+                for (const [c, r] of solids[t]) occupied[(fp.y0 + r) * w + fp.x0 + c] = 1;
+            } else {
+                for (let fy = fp.y0; fy <= fp.y1; fy++) {
+                    for (let fx = fp.x0; fx <= fp.x1; fx++) {
+                        const k = fy * w + fx;
+                        if (occupied[k] || (water && water[k])) return false;
+                    }
+                }
+                for (let fy = fp.y0; fy <= fp.y1; fy++) {
+                    for (let fx = fp.x0; fx <= fp.x1; fx++) occupied[fy * w + fx] = 1;
+                }
             }
             placements.push([t, x, y]);
             return true;
@@ -1009,7 +1041,8 @@ function createDualGrid() {
             : sandZone && sandZone[k] > 0.45 ? WORLD_VEG.dry : WORLD_VEG.temperate;
 
         // Проход 1 — ПОЛОГ: крупные деревья стенда занимают место первыми
-        // (в реальном лесу подрост развивается под пологом, а не наоборот)
+        // (в реальном лесу подрост развивается под пологом, а не наоборот).
+        // Посадка мягкая: в чаще кроны смыкаются и переплетаются в сплошной свод.
         for (let y = 0; y < h; y++) {
             for (let x = 0; x < w; x++) {
                 const k = y * w + x;
@@ -1017,58 +1050,62 @@ function createDualGrid() {
                 if (biomeAt(x, y) !== "grass") continue;
                 const F = forest[k];
                 if (F <= 0.42) continue;                          // лес: чаща + опушка
-                const den = F > 0.62 ? 0.045 : 0.012;
+                const den = F > 0.62 ? 0.06 : 0.012;
                 if (rng() >= den) continue;
                 const stands = vegZoneStands(k);
                 const stand = stands[Math.min(stands.length - 1, Math.floor(standRank[k] * stands.length))];
                 const pool = weighted(resolve(stand.canopy), 1);
-                if (pool.length) place(pickFrom(pool), x, y);
+                if (pool.length) place(pickFrom(pool), x, y, true);
             }
         }
 
-        // Проход 2 — подрост, подлесок, луга, берега
+        // Проход 2 — подрост, подлесок, луга, берега. Луг сеется КОМКАМИ
+        // (клумбоватый шум): между куртинами трав и цветов — голая земля.
         for (let y = 0; y < h; y++) {
             for (let x = 0; x < w; x++) {
                 const k = y * w + x;
                 if ((water && water[k]) || occupied[k] || clearing[k]) continue;
                 const b = biomeAt(x, y);
                 if (b === "snow") { // снежный биом — своя палитра (как прежде)
-                    if (rng() < 0.055) place(pickFrom(poolSnow), x, y);
+                    if (rng() < 0.055) place(pickFrom(poolSnow), x, y, true);
                     continue;
                 }
                 if (b === "desert") { // пустыня — камни/кости/сухие деревья
-                    if (rng() < 0.045) place(pickFrom(poolDesert), x, y);
+                    if (rng() < 0.045) place(pickFrom(poolDesert), x, y, true);
                     continue;
                 }
                 // Ивы и камыш у берега
                 if (shore && shore[k] && rng() < 0.12) {
-                    place(pickFrom(rng() < 0.6 ? willowPool : reedPool), x, y);
+                    place(pickFrom(rng() < 0.6 ? willowPool : reedPool), x, y, true);
                     continue;
                 }
                 const F = forest[k];
                 const core = F > 0.62, edge = !core && F > 0.42;      // чаща / опушка
                 const glade = core && gladeRank[k] > 0.9;             // поляна в чаще
-                let den = core ? 0.22 : edge ? 0.09 : 0.05;           // градиент плотности
+                let den = core ? 0.30 : edge ? 0.07 : 0;              // чаща гуще, луг — комками
                 if (glade) den = 0.05;
-                if (rng() >= den) continue;
-                if (!core && !edge) { // луг: травы/цветы, редкое одиночное дерево
-                    if (loneMeadow.length && rng() < 0.08) place(pickFrom(loneMeadow), x, y);
-                    else if (poolMeadow.length) place(pickFrom(poolMeadow), x, y);
+                if (!core && !edge) { // луг: куртины трав/цветов, голые прогалины,
+                    const clump = gladeRank[k] > 0.6;                 // редкое одиночное дерево
+                    den = clump ? 0.10 : 0.008;
+                    if (rng() >= den) continue;
+                    if (clump && loneMeadow.length && rng() < 0.08) place(pickFrom(loneMeadow), x, y, true);
+                    else if (poolMeadow.length) place(pickFrom(poolMeadow), x, y, true);
                     continue;
                 }
+                if (rng() >= den) continue;
                 const stands = vegZoneStands(k);
                 const stand = stands[Math.min(stands.length - 1, Math.floor(standRank[k] * stands.length))];
                 const treePool = [...weighted(resolve(stand.trees), 3),
                                   ...weighted(resolve(stand.comp), 1)];
                 const r = rng();
-                if (r < (glade ? 0.15 : core ? 0.55 : 0.5)) {         // подрост стенда:
-                    if (treePool.length) place(pickFrom(treePool), x, y); // доминанты тяжелее
-                } else if (r < (core ? 0.85 : 0.75)) {                // подлесок сообщества
+                if (r < (glade ? 0.15 : core ? 0.60 : 0.5)) {         // подрост стенда:
+                    if (treePool.length) place(pickFrom(treePool), x, y, true); // доминанты тяжелее
+                } else if (r < (core ? 0.92 : 0.78)) {                // подлесок сообщества
                     const floorPool = weighted(resolve(stand.floor), 1);
-                    if (floorPool.length) place(pickFrom(floorPool), x, y);
-                    else if (bushPool.length) place(pickFrom(bushPool), x, y);
-                } else if (bushPool.length) {                         // кусты общего пула
-                    place(pickFrom(bushPool), x, y);
+                    if (floorPool.length) place(pickFrom(floorPool), x, y, true);
+                    else if (bushPool.length) place(pickFrom(bushPool), x, y, true);
+                } else if (edge && bushPool.length) {                 // кусты — в основном на опушке
+                    place(pickFrom(bushPool), x, y, true);
                 }
             }
         }

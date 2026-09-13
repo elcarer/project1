@@ -1134,7 +1134,7 @@ async function generateWorldMap(withUndo = true) {
             obj = dual.generateWorldObjects({ w, h, seed: state.seed, masks: world.masks,
                 climate: world.climate,
                 items: objItems.map((it) => ({ name: it.name, group: it.group, weight: it.weight,
-                    cellsX: it.cellsX, cellsY: it.cellsY })) });
+                    cellsX: it.cellsX, cellsY: it.cellsY, pass: it.pass })) });
         }
     } catch (err) {
         if (withUndo) { state.undo.pop(); updateUndoButtons(); }
