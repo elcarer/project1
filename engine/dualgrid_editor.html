@@ -680,6 +680,20 @@ function drawUI() {
                 sp.alpha = 0.55;
                 sp.position.set((c.x + 0.5) * TS, (c.y + 1) * TS);
                 uiHolder.addChild(sp);
+                // непроходимые клетки признака — если включена галка «на карте»
+                if (document.getElementById("chkPassOverlay").checked) {
+                    const fp = dual.objectFootprint(it, c.x, c.y, TS);
+                    const g = new PIXI.Graphics();
+                    for (let cy = 0; cy < it.cellsY; cy++) {
+                        for (let cx = 0; cx < it.cellsX; cx++) {
+                            if (it.pass[cy * it.cellsX + cx] !== "1") continue;
+                            const gx = fp.x0 + cx, gy = fp.y0 + cy;
+                            if (gx >= 0 && gy >= 0 && gx < state.w && gy < state.h)
+                                g.rect(gx * TS, gy * TS, TS, TS).fill({ color: 0xff4a3c, alpha: 0.3 });
+                        }
+                    }
+                    uiHolder.addChild(g);
+                }
             }
         } else if (state.tool === "stamp") {
             const l = activeLayer();
