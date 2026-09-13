@@ -42,6 +42,9 @@ SOURCES = [
     dict(path=ART_DIR + "/замени-спрайты-окружения-на-прикреплённом-изображе (1).png", dense=False),
     dict(path=ENV_DIR + "/a-tidy-grid-of-isometric-fantasy-game-environment- (1).png", dense=True),
     dict(path=ENV_DIR + "/a-tidy-grid-of-isometric-fantasy-game-environment-.png", dense=True),
+    # листы 5-6 (руины / эльфийские руины): белая и ЖЕЛТОВАЯ В КРАПКУ заливки фона
+    dict(path=ENV_DIR + "/замени-спрайты-окружения-на-прикреплённом-изображе (1).png", dense=False, bg="white"),
+    dict(path=ENV_DIR + "/замени-спрайты-окружения-на-прикреплённом-изображе.png", dense=False, bg="beige"),
 ]
 OUT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "images", "objects"))
 
@@ -55,6 +58,8 @@ SHRINK = {
     # листы 3-4 (трава/ростки — мелкая живность на 32)
     "grass_spiky": 32, "grass_dark": 32, "grass_wild": 32, "grass_sprig": 32,
     "scrub_low": 32, "sprout_small": 32,
+    # листы 5-6
+    "pebbles_tiny": 32,
 }
 
 DEDUPE_THRESHOLD = 9.0
@@ -302,7 +307,251 @@ NAMES4 = {
 
 GROUP_WEIGHT = {"trees": 1, "bushes": 3, "plants": 3, "stones": 2, "gems": 1,
                 "magic": 1, "buildings": 1, "craft": 1, "furniture": 1,
-                "water": 1, "deco": 2}
+                "water": 1, "deco": 2, "ruins": 2}
+
+# ── Лист 5 (белый фон, каменные руины): k → (name, ru, group) | None | [сплиты] ──
+# Сплит: (x0, y0, x1, y1, name, ru, group) — прямоугольник в координатах листа.
+NAMES5 = {
+    0: ("sun_big", "Солнце большое", "magic"),
+    1: ("signpost_trail", "Указатель «Тропа»", "deco"),
+    2: ("tower_fire", "Башня с обгоревшим верхом", "ruins"),
+    3: ("signpost_cross", "Указатель развилки", "deco"),
+    4: ("owl_eared", "Сова ушастая", "deco"),
+    5: ("stones_drift", "Камушки россыпью", "stones"),
+    6: ("column_stump", "Культая колонна", "ruins"),
+    7: ("tower_tall", "Башня высокая руинированная", "ruins"),
+    8: ("amphora_broken", "Амфора разбитая", "ruins"),
+    9: ("pond_puddle", "Лужа", "water"),
+    10: ("jug_shards", "Кувшин с осколками", "ruins"),
+    11: ("tree_dead_small", "Сухое деревце", "trees"),
+    12: ("column_lie", "Барабан колонны лежит", "ruins"),
+    13: ("crystal_roots", "Кристалл в корнях", "magic"),
+    14: ("pebbles_mound", "Галька кучей", "stones"),
+    15: ("rubble_pile", "Обломки кучей", "ruins"),
+    16: ("dove_white", "Голубь белый", "deco"),
+    17: ("stone_spiral", "Камень со спиралями", "ruins"),
+    18: ("column_fallen", "Колонна упавшая", "ruins"),
+    19: ("pebbles_small", "Галька мелкая", "stones"),
+    20: ("column_tall", "Колонна целая", "ruins"),
+    21: ("column_plinth", "Колонна с плинфусом", "ruins"),
+    22: ("column_knob", "Колонна с капителью", "ruins"),
+    23: ("arch_ruin", "Арка руинированная", "ruins"),
+    24: ("stump_rooted", "Пень с корнями", "trees"),
+    25: None,
+    26: ("columns_lie_pair", "Барабаны парой", "ruins"),
+    27: ("column_broken_small", "Колонна сломанная малая", "ruins"),
+    28: ("column_drum", "Барабан колонны большой", "ruins"),
+    29: ("column_base", "Колонна на базе", "ruins"),
+    30: [(575, 260, 639, 322, "column_stub", "Колонна обломок", "ruins"),
+         (575, 322, 639, 385, "stump_open", "Пень с дуплом", "trees")],
+    31: ("column_piece", "Колонна фрагмент", "ruins"),
+    32: ("pebbles_pile", "Камни горкой", "stones"),
+    33: ("ruins_floor", "Мозаика руин", "ruins"),
+    34: ("brush_dry", "Сухостой кустовой", "plants"),
+    35: ("stones_drygrass", "Камни с сухостоем", "stones"),
+    36: ("pebbles_rubble", "Галька с обломками", "stones"),
+    37: ("wing_white", "Крыло каменное", "deco"),
+    38: ("stump_boulder", "Пень с валунами", "trees"),
+    39: ("tree_dead_branchy", "Сухостой ветвистый большой", "trees"),
+    40: ("tower_round", "Башня круглая руина", "ruins"),
+    41: [(404, 341, 558, 504, "root_tunnel", "Корневой тоннель", "trees"),
+         (456, 500, 505, 578, "signpost_mini", "Указатель малый", "deco")],
+    42: ("tree_dead_sparse", "Сухое дерево редкое", "trees"),
+    43: ("log_massive", "Бревно огромное", "deco"),
+    44: [(838, 358, 961, 573, "rocks_cairn", "Камни пирамидой", "stones"),
+         (838, 573, 961, 637, "lantern_herbs", "Фонарь с травами", "deco")],
+    45: ("runestone_blue", "Рунный камень синий", "magic"),
+    46: [(0, 764, 64, 836, "sign_boot", "Вывеска с сапогом", "deco"),
+         (64, 764, 128, 836, "sign_swords", "Вывеска с мечами", "deco"),
+         (128, 764, 194, 836, "sign_anvil", "Вывеска с наковальней", "deco")],
+    47: ("vine_pillar", "Столб из лиан", "deco"),
+    48: ("bench_jugs", "Лавка с кувшинами", "craft"),
+    49: ("board_stars", "Доска звёздная", "magic"),
+    50: ("windchime_wall", "Вертушка настенная", "deco"),
+    51: ("stump_low", "Пень-подставка", "deco"),
+    52: [(582, 447, 634, 512, "well_old", "Колодец ветхий", "buildings"),
+         (582, 512, 634, 577, "well_stone", "Колодец каменный", "buildings")],
+    53: ("bowl_stone", "Ступа каменная", "deco"),
+    54: ("mat_tools", "Ковёр с инструментами", "deco"),
+    55: ("log_wide", "Бревно длинное", "deco"),
+    56: [(771, 458, 829, 518, "wood_arbor", "Дровник", "buildings"),
+         (771, 518, 829, 574, "basket_hanging", "Корзина подвесная", "deco")],
+    57: ("menhir_round", "Менгир округлый", "ruins"),
+    58: ("slab_rune", "Плита рунная", "ruins"),
+    59: ("fence_wattle", "Забор плетёный", "buildings"),
+    60: ("statue_idol", "Идол деревянный", "deco"),
+    61: ("tree_snag", "Коряга", "trees"),
+    62: [(639, 524, 694, 584, "barrel_large", "Бочка большая", "deco"),
+         (639, 584, 694, 641, "owl_branch", "Сова на ветке", "deco")],
+    63: ("birdhouse_post", "Скворечники на столбе", "deco"),
+    64: ("lamppost_small", "Фонарик на ножке", "deco"),
+    65: ("totem_winged", "Тотем крылатый", "deco"),
+    66: [(320, 654, 390, 706, "leaf_big", "Лист дубовый", "plants"),
+         (390, 654, 456, 706, "bench_garden", "Скамья садовая", "furniture"),
+         (456, 654, 514, 706, "table_spill", "Стол-спил", "furniture")],
+    67: ("stone_armchair", "Кресло каменное", "furniture"),
+    68: ("bench_high", "Скамья со спинкой", "furniture"),
+    69: ("tray_mushrooms", "Лоток с грибами", "deco"),
+    70: [(511, 579, 577, 636, "sconce_stand", "Факел на стойке", "deco"),
+         (511, 636, 577, 700, "tree_twist_mini", "Деревце витое", "trees"),
+         (511, 700, 577, 769, "board_notice_small", "Доска сообщений", "deco")],
+    71: ("watering_can_big", "Лейка большая", "deco"),
+    72: ("bowl_wide", "Чаша широкая", "deco"),
+    73: ("log_carved", "Бревно резное", "deco"),
+    74: [(703, 650, 769, 716, "pots_triplet", "Горшки тройкой", "deco"),
+         (703, 716, 769, 761, "skulls_pile", "Черепа кучей", "magic")],
+    75: [(781, 576, 822, 646, "herbs_hang", "Травы подвешенные", "deco"),
+         (781, 646, 822, 704, "lantern_iron", "Фонарь железный", "deco")],
+    76: ("forge_big", "Кузница", "craft"),
+    77: ("column_pedestal", "Пьедестал колонны", "ruins"),
+    78: ("sign_bird", "Вывеска с птицей", "deco"),
+    79: ("sign_mug", "Вывеска с кружкой", "deco"),
+    80: ("stump_table", "Пень-стол", "furniture"),
+    81: ("well_root", "Колодец корневой", "buildings"),
+    82: ("basket_empty", "Корзина пустая", "deco"),
+    83: ("signpost_arrows", "Указатель со стрелками", "deco"),
+    84: [(589, 712, 629, 746, "birdbath_bowl", "Поилка птичья", "deco"),
+         (589, 746, 629, 769, "planter_clay", "Кашпо глиняное", "deco")],
+    85: [(639, 711, 690, 776, "statue_deer", "Статуя оленя", "deco"),
+         (639, 776, 690, 826, "basket_rope", "Корзина на верёвке", "deco")],
+    86: ("pot_small", "Горшочек", "deco"),
+    87: ("barrel_marked", "Бочка с меткой", "deco"),
+    88: None,
+    89: ("pavilion_tattered", "Навес рваный", "buildings"),
+    90: ("shield_rocks", "Щит на камнях", "deco"),
+    91: ("chalice_stone", "Кубок каменный", "ruins"),
+    92: ("mushrooms_red", "Грибы красные", "plants"),
+    93: None,
+    94: ("stonecircle_rune", "Кромлех рунный", "ruins"),
+    95: ("pinecones_pair", "Шишки парой", "plants"),
+    96: ("chain", "Цепь", "deco"),
+    97: ("amphora_cracked", "Амфора треснутая", "ruins"),
+    98: ("horse_wood", "Конь деревянный", "deco"),
+    99: None,
+    100: None,
+    101: ("fence_branch", "Забор из жердей", "buildings"),
+    102: None,
+    103: None,
+}
+
+# ── Лист 6 (бежевый крапчатый фон, эльфийские руины) ──
+NAMES6 = {
+    0: ("sun_warm", "Солнце рыжее", "magic"),
+    4: ("obelisk_mossy", "Обелиск с лианами", "ruins"),
+    5: ("flowers_lilac", "Цветы сиреневые", "plants"),
+    6: [(326, 9, 392, 262, "column_frag", "Колонна обломок с плитой", "ruins"),
+        (392, 9, 641, 262, "stump_plaza", "Пень древний с площадкой", "ruins")],
+    7: ("column_mossy", "Колонна мшистая", "ruins"),
+    8: ("stump_split", "Пень расколотый", "deco"),
+    9: ("pond_round", "Пруд круглый", "water"),
+    10: [(703, 15, 770, 66, "leaves_pair", "Листья парой", "plants"),
+         (770, 15, 832, 66, "log_mossy", "Бревно мшистое", "deco")],
+    12: [(769, 68, 830, 128, "crystal_rooted", "Кристалл корневой", "magic"),
+         (830, 68, 897, 128, "pebbles_heap", "Галька ворохом", "stones")],
+    14: ("dove_brown", "Голубь бурый", "deco"),
+    17: ("grass_dry", "Трава сухая", "plants"),
+    18: ("tree_birch_dark", "Берёза тёмная", "trees"),
+    19: ("stump_ancient", "Пень древний", "trees"),
+    20: ("rocks_pile_small", "Камни кучкой", "stones"),
+    21: ("arch_moss", "Арка мшистая", "ruins"),
+    22: ("flowers_dry", "Сухоцветы", "plants"),
+    23: ("stump_hollow_moss", "Пень дуплистый мшистый", "trees"),
+    24: ("root_hook", "Корень дугой", "deco"),
+    25: ("tree_twisted_vine", "Дерево витое с лианами", "trees"),
+    26: ("brush_tangle", "Хворост переплетённый", "deco"),
+    27: ("brush_wreath", "Хворост венком", "deco"),
+    28: ("brush_dry_small", "Кустик сухой", "plants"),
+    29: ("pebbles_tiny", "Камешки малые", "stones"),
+    30: [(574, 259, 640, 312, "snag_branchy", "Сухостой ветвистый", "trees"),
+         (574, 312, 640, 388, "stump_mossy", "Пень мшистый с дуплом", "trees")],
+    31: ("snag_bare", "Сухостой голый", "trees"),
+    32: [(703, 265, 762, 332, "bush_green", "Куст зелёный пышный", "bushes"),
+         (703, 332, 820, 384, "log_moss_big", "Бревно с мхом", "deco")],
+    33: ("brush_snarl", "Хворост сплетение", "deco"),
+    34: ("reeds_dry", "Камыш сухой", "plants"),
+    35: ("moss_bed", "Мох-подушка", "plants"),
+    37: ("boulder_green", "Валун мшистый", "stones"),
+    38: ("wall_corner", "Стена руин с обломками", "ruins"),
+    39: ("wall_vine", "Стена с лианами", "ruins"),
+    40: ("columns_pair", "Колонны парой", "ruins"),
+    41: [(402, 337, 518, 490, "root_arch_dry", "Корневая арка", "trees"),
+         (518, 337, 558, 440, "windchime_dry", "Подвеска сухая", "deco"),
+         (455, 488, 506, 578, "signpost_way", "Указатель пути", "deco")],  # пусто: убрать?
+    42: [(649, 355, 698, 440, "snag_thin", "Сухостой тонкий", "trees"),
+         (649, 440, 698, 514, "birdbath_stone", "Поилка каменная", "deco")],
+    43: [(836, 357, 960, 505, "cairn_moss", "Камни пирамидой мшистые", "stones"),
+         (836, 573, 960, 637, "lantern_herbal", "Фонарь травник", "deco")],
+    45: [(5, 459, 317, 784, "root_plaza", "Корневая площадка", "ruins"),
+         (62, 786, 128, 834, "sign_swords_m", "Вывеска с мечами мшистая", "deco"),
+         (126, 786, 192, 834, "sign_anvil_m", "Вывеска с наковальней мшистая", "deco"),
+         (190, 786, 256, 834, "sign_bird_m", "Вывеска с птицей мшистая", "deco")],
+    47: [(319, 448, 390, 514, "bench_pottery", "Лавка гончара", "craft"),
+         (390, 448, 445, 514, "board_night", "Доска ночная", "magic")],
+    48: [(508, 446, 578, 514, "chime_bronze", "Вертушка бронзовая", "deco"),
+         (578, 446, 640, 547, "well_gable", "Колодец с фронтоном", "buildings"),
+         (508, 514, 578, 591, "topiary_ball", "Топиарий шаровый", "bushes"),
+         (508, 591, 578, 654, "totem_beast", "Тотем зверя", "deco"),
+         (508, 654, 578, 719, "snag_pale", "Сухостой бледный", "trees"),
+         (508, 719, 578, 770, "board_notice", "Доска объявлений старая", "deco")],
+    50: [(706, 457, 768, 520, "tools_rug", "Ковёр инструментальный", "deco"),
+         (768, 450, 831, 520, "arbor_wood", "Навес дровяной", "buildings"),
+         (770, 515, 831, 585, "planter_hang", "Кашпо с растениями", "deco")],
+    52: ("menhir_moss", "Менгир мшистый", "ruins"),
+    54: [(318, 529, 384, 585, "fence_lattice", "Забор решётчатый", "buildings"),
+         (318, 585, 384, 640, "armchair_moss", "Кресло мшистое", "furniture")],
+    56: [(640, 523, 694, 585, "barrel_hoop", "Бочка обручная", "deco"),
+         (640, 585, 694, 640, "owl_perch", "Сова на суке", "deco")],
+    57: ("birdhouses_trio", "Скворечники тройкой", "deco"),
+    58: [(780, 572, 825, 645, "chime_pine", "Подвеска шишкой", "deco"),
+         (780, 645, 825, 706, "lantern_moss", "Фонарь с мхом", "deco")],
+    61: ("bench_broken", "Скамья сломанная", "furniture"),
+    62: ("tray_antlers", "Лоток с рогами", "deco"),
+    63: [(698, 640, 772, 712, "pots_triplet_m", "Горшки тройкой мшистые", "deco"),
+         (712, 698, 782, 775, "skulls_pile_m", "Черепа кучей мшистые", "magic"),
+         (640, 703, 715, 777, "deer_topiary", "Топиарий олень", "bushes"),
+         (608, 768, 680, 835, "mushrooms_red_m", "Грибы красные мшистые", "plants"),
+         (652, 763, 722, 835, "basket_hang_m", "Корзина подвесная мшистая", "deco")],
+    65: [(578, 649, 639, 712, "bowl_moss", "Чаша с мхом", "deco"),
+         (578, 712, 639, 770, "birdbath_moss", "Поилка мшистая", "deco")],
+    66: ("pot_bloom", "Горшок в цвету", "plants"),
+    67: ("planter_log", "Корыто с растениями", "plants"),
+    68: ("forge_root", "Кузница корневая", "craft"),
+    69: ("column_leaf", "Столб с листьями", "ruins"),
+    70: ("sign_mug_m2", "Вывеска с кружкой бурая", "deco"),
+    71: ("stump_table_m", "Пень-стол мшистый", "furniture"),
+    72: [(395, 717, 445, 772, "basket_apple_m", "Корзина яблок мшистая", "deco"),
+         (333, 792, 500, 897, "well_root_m", "Колодец корневой мшистый", "buildings")],
+    73: ("sign_boot_m", "Вывеска с сапогом мшистая", "deco"),
+    74: ("lamppost_signs", "Фонарь с указателями", "deco"),
+    75: ("pavilion_flowers", "Навес цветочный", "buildings"),
+    78: ("pinecones_trio", "Шишки тройкой", "plants"),
+    79: ("rune_gate", "Врата рунные", "ruins"),
+    80: ("branches_hedge", "Заросли кустовые", "deco"),
+    81: ("candles_white", "Канделябр восковой", "magic"),
+    84: ("willow_white", "Ива белая", "trees"),
+    86: [(961, 896, 1022, 962, "shield_ale", "Щит с элем", "deco"),
+         (961, 962, 1022, 1023, "shield_snake", "Щит со змеёй", "deco")],
+}
+
+# Объекты, которые касаются края листа, но проверены визуально как целые
+# (касается только тень/подошва/кончик): (src_idx, k)
+KEEP_EDGE = {(4, 1), (4, 3), (4, 46), (4, 65), (4, 89), (5, 37), (5, 73),
+             (5, 74), (5, 75), (5, 79), (5, 84), (5, 86)}
+
+# Принудительно оставить, несмотря на похожесть сигнатуры на уже принятый
+# объект (проверено глазами: другой предмет, а не повтор-генерация)
+FORCE_KEEP = {(5, 74), (5, 18)}
+
+BGC_BEIGE = np.array([229.0, 211.0, 173.0])
+
+# Замкнутые карманы фона внутри силуэтов (дыры плетёнок/арок), проверенные
+# визуально: фон внутри удаляется безусловно. Критерий — цвет фона листа.
+KEY_INNER_HOLES = {
+    "root_tunnel", "wood_arbor", "leaf_big", "fence_branch", "stonecircle_rune",
+    "brush_tangle", "brush_wreath", "brush_snarl", "snag_bare", "snag_branchy",
+    "stump_mossy", "root_arch_dry", "windchime_dry", "arbor_wood", "fence_lattice",
+    "branches_hedge", "arch_moss", "lantern_herbal",
+}
 
 
 def eat_white_edges(rgba, thr=195, sat=30, max_iters=8):
@@ -496,6 +745,136 @@ def refine_bbox(a, o):
     return x0, y0, x1, y1
 
 
+# ── Листы 5-6: флуд-ключинг фона, компонентная сегментация, mask-cut ─────────
+
+def flood_bg(a, cand):
+    """Флуд от краёв изображения по кандидатам на фон."""
+    lab, n = ndi.label(cand, structure=np.ones((3, 3), int))
+    border = set(lab[0, :]) | set(lab[-1, :]) | set(lab[:, 0]) | set(lab[:, -1])
+    border.discard(0)
+    return np.isin(lab, list(border))
+
+
+def bgmask_white_flood(a, thr=248):
+    """Белый фон: флуд от краёв по почти-белому (внутренние блики голубя/
+    пергамента, отрезанные от фона силуэтом, не затрагиваются)."""
+    return flood_bg(a, a.min(axis=2) >= thr)
+
+
+def bgmask_beige(a, T=40, speck=25):
+    """Бежевый фон в крапинку: дистанция цвета до бежевого + флуд от краёв,
+    затем мелкие острова-крапинки убираются в фон."""
+    d = np.sqrt(((a.astype(np.float32) - BGC_BEIGE) ** 2).sum(axis=2))
+    bgm = flood_bg(a, d < T)
+    solid = ~bgm
+    lab, n = ndi.label(solid, structure=np.ones((3, 3), int))
+    sizes = ndi.sum(solid, lab, range(1, n + 1))
+    bgm |= np.isin(lab, [i + 1 for i in range(n) if sizes[i] < speck])
+    return bgm
+
+
+def segment_components(a, bgm, pad=4, big_min=300, small_min=30):
+    """Крупные компоненты (>=big_min px) = объекты; мелкие (small_min..big_min)
+    прикрепляются к единственному крупному, в чей padded bbox они попадают;
+    непривязанные мелкие — мусор (крапинки, обрывки). Возврат: (objs, claim),
+    claim — карта меток групп (номер объекта + 1) для mask-cut."""
+    mask = ~bgm
+    lab, n = ndi.label(mask, structure=np.ones((3, 3), int))
+    comps = []
+    for i, sl in enumerate(ndi.find_objects(lab)):
+        if sl is None:
+            continue
+        ys, xs = sl
+        comps.append(dict(x0=int(xs.start), y0=int(ys.start), x1=int(xs.stop), y1=int(ys.stop),
+                          area=int((lab[sl] == i + 1).sum()), members=[i + 1]))
+    bigs = [c for c in comps if c["area"] >= big_min]
+    smalls = [c for c in comps if small_min <= c["area"] < big_min]
+    used = set()
+    for s in smalls:
+        best, bd = None, None
+        for b in bigs:
+            if (s["x0"] >= b["x0"] - pad and s["y0"] >= b["y0"] - pad and
+                    s["x1"] <= b["x1"] + pad and s["y1"] <= b["y1"] + pad):
+                bc = ((b["x0"] + b["x1"]) / 2, (b["y0"] + b["y1"]) / 2)
+                sc = ((s["x0"] + s["x1"]) / 2, (s["y0"] + s["y1"]) / 2)
+                dist = (bc[0] - sc[0]) ** 2 + (bc[1] - sc[1]) ** 2
+                if bd is None or dist < bd:
+                    best, bd = b, dist
+        if best is not None:
+            best["members"].extend(s["members"])
+            best["x0"] = min(best["x0"], s["x0"]); best["y0"] = min(best["y0"], s["y0"])
+            best["x1"] = max(best["x1"], s["x1"]); best["y1"] = max(best["y1"], s["y1"])
+            best["area"] += s["area"]
+            used.add(id(s))
+    objs = sorted(bigs, key=lambda o: (o["y0"] // 96, o["x0"]))
+    claim = np.zeros(a.shape[:2], np.int32)
+    for gi, o in enumerate(objs):
+        claim[np.isin(lab, o["members"])] = gi + 1
+    return objs, claim
+
+
+def eat_bg_edges(rgba, bgc, thr=50, max_iters=8):
+    """Аналог eat_white_edges для цветного фона: пиксели цвета фона
+    (дистанция < thr) с внешнего края снимаются волной снаружи."""
+    alpha = rgba[..., 3].copy()
+    rgb = rgba[..., :3].astype(np.float32)
+    bgish = np.sqrt(((rgb - bgc) ** 2).sum(axis=2)) < thr
+    st = np.ones((3, 3), bool)
+    for _ in range(max_iters):
+        opaque = alpha > 0
+        if not opaque.any():
+            break
+        near = ndi.binary_dilation(~opaque, structure=st) & opaque
+        near[0, :] |= opaque[0, :]; near[-1, :] |= opaque[-1, :]
+        near[:, 0] |= opaque[:, 0]; near[:, -1] |= opaque[:, -1]
+        eat = near & bgish
+        if not eat.any():
+            break
+        alpha[eat] = 0
+    rgba[..., 3] = alpha
+    return rgba
+
+
+def cut_object_mask(a, bgm, claim, allowed, box, bgc=None):
+    """Вырезка по маске СВОЕГО компонента (соседи в прямоугольнике не попадают).
+    bgc None — белый фон (un-blend к белому), иначе массив цвета фона."""
+    x0, y0, x1, y1 = box
+    sub = a[y0:y1, x0:x1].astype(np.float32)
+    bgm_s = bgm[y0:y1, x0:x1]
+    own = np.isin(claim[y0:y1, x0:x1], allowed)
+    keep = (~bgm_s) & own
+    ring = ndi.binary_dilation(~keep, structure=np.ones((3, 3), int), iterations=2) & keep
+    if bgc is None:
+        t = sub.min(axis=2)
+        alpha_f = np.where(bgm_s | ~keep, 0.0, np.where(ring, 1.0 - t / 255.0, 1.0))
+        af3 = alpha_f[..., None]
+        cc = np.where(af3 > 0, (sub - 255.0 * (1.0 - af3)) / np.maximum(af3, 1e-6), sub)
+        rgba = np.dstack([np.clip(cc, 0, 255).astype(np.uint8), (alpha_f * 255).astype(np.uint8)])
+        rgba = eat_white_edges(rgba)
+    else:
+        dist = np.sqrt(((sub - bgc) ** 2).sum(axis=2))
+        alpha_f = np.where(bgm_s | ~keep, 0.0,
+                           np.where(ring, np.clip(dist / 110.0, 0.0, 1.0) ** 1.5, 1.0))
+        alpha_f[alpha_f < 0.12] = 0.0
+        af3 = alpha_f[..., None]
+        cc = np.where(af3 > 0, (sub - bgc * (1.0 - af3)) / np.maximum(af3, 1e-6), sub)
+        rgba = np.dstack([np.clip(cc, 0, 255).astype(np.uint8), (alpha_f * 255).astype(np.uint8)])
+        rgba = eat_bg_edges(rgba, bgc)
+    return drop_edge_fragments(rgba)
+
+
+def content_trim(rgba, pad=1):
+    """Кроп контента вплотную (+pad). Возврат (массив, x0, y0, x1, y1 в листе)."""
+    ys, xs = np.where(rgba[..., 3] > 8)
+    if not len(xs):
+        return None
+    x0, x1 = int(xs.min()), int(xs.max()) + 1
+    y0, y1 = int(ys.min()), int(ys.max()) + 1
+    sx0 = max(0, x0 - pad); sy0 = max(0, y0 - pad)
+    sx1 = min(rgba.shape[1], x1 + pad); sy1 = min(rgba.shape[0], y1 + pad)
+    return rgba[sy0:sy1, sx0:sx1], sx0, sy0, sx1, sy1
+
+
 def signature(im, size=48):
     """Контент, вписанный в квадрат (низ-центр): RGB поверх серого + альфа."""
     arr = np.array(im)
@@ -517,7 +896,7 @@ def signature(im, size=48):
 accepted = []   # [{name, ru, group, rgba(массив холста), w, h, ...}]
 pool_sigs = []  # сигнатуры уже принятых (для дедупликации листа 2)
 
-for src_idx, src in enumerate(SOURCES):
+for src_idx, src in enumerate(SOURCES[:4]):
     a = np.array(Image.open(src["path"]).convert("RGB"))
     mn_all = a.min(axis=2)
     global_bg = mn_all >= 240
@@ -577,6 +956,58 @@ for src_idx, src in enumerate(SOURCES):
 
         accepted.append(dict(name=name, ru=ru, group=group, rgba=rgba))
 
+# ── 1б. Листы 5-6: руинные, флуд-фон, компоненты, mask-cut ───────────────────
+for src_idx in (4, 5):
+    src = SOURCES[src_idx]
+    a = np.array(Image.open(src["path"]).convert("RGB"))
+    beige = src["bg"] == "beige"
+    bgm = bgmask_beige(a) if beige else bgmask_white_flood(a)
+    objs, claim = segment_components(a, bgm)
+    bgc = BGC_BEIGE if beige else None
+    names_src = NAMES5 if src_idx == 4 else NAMES6
+    H, W = a.shape[:2]
+    for k, o in enumerate(objs):
+        entry = names_src.get(k)
+        if entry is None:
+            continue
+        parts = entry if isinstance(entry, list) else [(o["x0"], o["y0"], o["x1"], o["y1"]) + entry]
+        for part in parts:
+            bx0, by0, bx1, by1, name, ru, group = part
+            rgba = cut_object_mask(a, bgm, claim, [k + 1], (bx0, by0, bx1, by1), bgc)
+            if name in KEY_INNER_HOLES:
+                if bgc is None:
+                    rgba[..., 3][rgba[..., :3].min(axis=2) >= 243] = 0
+                else:
+                    dd = np.sqrt(((rgba[..., :3].astype(np.float32) - bgc) ** 2).sum(axis=2))
+                    rgba[..., 3][dd < 42] = 0
+                rgba = eat_white_edges(rgba) if bgc is None else eat_bg_edges(rgba, bgc)
+            trimmed = content_trim(rgba)
+            if trimmed is None or trimmed[0].shape[0] < 6 or trimmed[0].shape[1] < 6:
+                print(f"  лист{src_idx+1} #{k} «{name}»: пустой срез — проверь сплит")
+                continue
+            rgba, tx0, ty0, tx1, ty1 = trimmed
+            tx0 += bx0; tx1 += bx0; ty0 += by0; ty1 += by0
+            touches = tx0 <= 1 or ty0 <= 1 or tx1 >= W - 1 or ty1 >= H - 1
+            if touches and (src_idx, k) not in KEEP_EDGE:
+                print(f"  лист{src_idx+1} #{k} «{name}»: задет край листа — пропущен")
+                continue
+            im = Image.fromarray(rgba, "RGBA")
+            target = SHRINK.get(name)
+            cw, ch = im.size
+            if target and max(cw, ch) > target:
+                s = target / max(cw, ch)
+                im = im.resize((max(1, int(cw * s)), max(1, int(ch * s))), Image.LANCZOS)
+            rgba = np.array(im)
+            sig = signature(Image.fromarray(rgba, "RGBA"))
+            if sig is not None and pool_sigs and (src_idx, k) not in FORCE_KEEP:
+                dists = [np.abs(sig - s2).mean() for s2 in pool_sigs]
+                if min(dists) < DEDUPE_THRESHOLD:
+                    print(f"  лист{src_idx+1} #{k}: повтор «{name}» (diff {min(dists):.1f}) — пропущен")
+                    continue
+            if sig is not None:
+                pool_sigs.append(sig)
+            accepted.append(dict(name=name, ru=ru, group=group, rgba=rgba))
+
 # ── 2. Холсты (кратны 32, низ-центр) и сохранение ────────────────────────────
 os.makedirs(OUT, exist_ok=True)
 items = []
@@ -612,7 +1043,7 @@ if os.path.exists(pass_file):
             it["pass"] = ps
             applied += 1
 
-meta = dict(source="elven_wood, листы «замени-спрайты-окружения» 1–2", tileSize=32,
+meta = dict(source="elven_wood, листы «замени-спрайты-окружения» 1–6", tileSize=32,
             anchor="bottom-center", density=12, count=len(items), items=items)
 with open(os.path.join(OUT, "objects.json"), "w", encoding="utf-8") as fh:
     json.dump(meta, fh, ensure_ascii=False, indent=1)
