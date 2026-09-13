@@ -314,19 +314,9 @@ function createDualGrid() {
     }
 
     // ── ГЕНЕРАТОР КАРТ ────────────────────────────────────────────────────────
-    // fBm value-noise (3 октавы) + порог-квантиль: частота «фичи» (в %) выдерживается
-    // точно при любом сиде и разбросе. scatter: 0 — решётка 1.5 клетки (крупные
-    // материки), 100 — до min(w,h)/2.2 клеток (мелкие островки).
-    function generateMap({ w, h, seed = 1, frequency = 30, scatter = 50 }) {
-        if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1) {
-            throw new Error("dualgrid.generateMap: размеры должны быть целыми ≥ 1");
-        }
-        const f = clampPercent(frequency) / 100;
-        const s = clampPercent(scatter) / 100;
-        const maxCells = Math.max(2, Math.min(w, h) / 2.2);
-        const baseCells = 1.5 + s * (maxCells - 1.5);
-        const rng = mulberry32(typeof seed === "number" ? seed >>> 0 : hashSeed(String(seed)));
-
+    // fBm value-noise (3 октавы, амплитуды 0.5/0.3/0.2). baseCells — размер ячейки
+    // базовой октавы в клетках карты: 1.5 — крупные материки, min(w,h)/2.2 — островки.
+    function fbmField(w, h, rng, baseCells) {
         const value = new Float32Array(w * h);
         let ampSum = 0;
         for (const [mult, amp] of [[1, 0.5], [2, 0.3], [4, 0.2]]) {
@@ -347,6 +337,40 @@ function createDualGrid() {
             }
         }
         for (let i = 0; i < value.length; i++) value[i] /= ampSum;
+        return value;
+    }
+
+    // Ранговая нормализация: значение каждой ячейки → его доля среди всех значений
+    // поля (0..1, распределение равномерное). Порог от поля вероятностей P даёт
+    // локальную частоту «фичи» P(ячейка) точно, а не в среднем по карте.
+    function rankNormalize(value) {
+        const n = value.length;
+        const sorted = Float32Array.from(value).sort();
+        const out = new Float32Array(n);
+        for (let i = 0; i < n; i++) {
+            let lo = 0, hi = n; // нижняя граница значения в отсортированном массиве
+            while (lo < hi) {
+                const mid = (lo + hi) >> 1;
+                if (sorted[mid] < value[i]) lo = mid + 1; else hi = mid;
+            }
+            out[i] = lo / n;
+        }
+        return out;
+    }
+
+    // fBm value-noise (3 октавы) + порог-квантиль: частота «фичи» (в %) выдерживается
+    // точно при любом сиде и разбросе. scatter: 0 — решётка 1.5 клетки (крупные
+    // материки), 100 — до min(w,h)/2.2 клеток (мелкие островки).
+    function generateMap({ w, h, seed = 1, frequency = 30, scatter = 50 }) {
+        if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1) {
+            throw new Error("dualgrid.generateMap: размеры должны быть целыми ≥ 1");
+        }
+        const f = clampPercent(frequency) / 100;
+        const s = clampPercent(scatter) / 100;
+        const maxCells = Math.max(2, Math.min(w, h) / 2.2);
+        const baseCells = 1.5 + s * (maxCells - 1.5);
+        const rng = mulberry32(typeof seed === "number" ? seed >>> 0 : hashSeed(String(seed)));
+        const value = fbmField(w, h, rng, baseCells);
 
         // Порог = квантиль распределения значений → частота соблюдается точно
         const sorted = Float32Array.from(value).sort();
@@ -614,6 +638,310 @@ function createDualGrid() {
                 return blocked[gy * w + gx] === 1;
             },
         };
+    }
+
+    // ── ГЕНЕРАТОР МИРА (карта «открытого мира» с биомными поясами) ────────────
+    // Климат: широтный градиент температуры (север — холод, юг — жара) + fBm-шум,
+    // который делает границы поясов волнистыми и оставляет карманы биомов в середине.
+    // Вероятности местностей — поля Float32 (не глобальная частота!); в маски они
+    // переводятся ранговой нормализацией шума. Дальше — обычный пайплайн стека:
+    // привязка «on» (эрозия земляных пятен) и зазоры между разными тайлсетами.
+    function generateWorld({ w, h, seed = 1 }) {
+        if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1) {
+            throw new Error("dualgrid.generateWorld: размеры должны быть целыми ≥ 1");
+        }
+        const rng = mulberry32(typeof seed === "number" ? seed >>> 0 : hashSeed(String(seed)));
+        const n = w * h;
+        const small = Math.min(w, h);
+
+        const temp = new Float32Array(n);
+        const snowZone = new Float32Array(n);
+        const sandZone = new Float32Array(n);
+        const jitter = fbmField(w, h, rng, Math.max(3, Math.round(small / 60)));
+        for (let y = 0; y < h; y++) {
+            const u = y / Math.max(1, h - 1); // 0 — север (холод), 1 — юг (жара)
+            for (let x = 0; x < w; x++) {
+                const i = y * w + x;
+                const T = Math.min(1, Math.max(0, u + (jitter[i] - 0.5) * 0.36));
+                temp[i] = T;
+                snowZone[i] = Math.min(1, Math.max(0, (0.40 - T) / 0.26));
+                sandZone[i] = Math.min(1, Math.max(0, (T - 0.66) / 0.26));
+            }
+        }
+        const moisture = rankNormalize(fbmField(w, h, rng, Math.max(3, Math.round(small / 40))));
+
+        // Поля вероятностей: земляные пятна — субстрат снега и песка (в поясах их
+        // больше), снег/песок заполняют субстрат по своей зоне, вода живёт по
+        // влажности и редеет в поясах (на юге редкие пруды = оазисы).
+        const pDirt = new Float32Array(n);
+        const pSnowZone = new Float32Array(n);
+        const pSandZone = new Float32Array(n);
+        const pSnowDust = new Float32Array(n);
+        const pSandDust = new Float32Array(n);
+        const pWater = new Float32Array(n);
+        for (let i = 0; i < n; i++) {
+            pDirt[i] = Math.min(0.85, 0.14 + 0.62 * Math.max(snowZone[i], sandZone[i]));
+            pSnowZone[i] = 0.88 * snowZone[i];
+            pSandZone[i] = 0.88 * sandZone[i];
+            // редкая россыпь одиночных пятен: снег тает к пустыне, песок — к снегам
+            pSnowDust[i] = 0.05 * (1 - sandZone[i]);
+            pSandDust[i] = 0.05 * (1 - snowZone[i]);
+            pWater[i] = Math.max(0, Math.min(0.5, (0.10 + 0.18 * (moisture[i] * 2 - 1)) *
+                (1 - 0.55 * snowZone[i]) * (1 - 0.45 * sandZone[i])));
+        }
+        // Зонные слои — грубый шум (крупные поля); россыпь — мелкий, иначе редкие
+        // проценты на грубом шуме выпадают кластерами в случайных местах карты.
+        const dirtRank = rankNormalize(fbmField(w, h, rng, Math.max(2, Math.round(small / 90))));
+        const snowRank = rankNormalize(fbmField(w, h, rng, Math.max(2, Math.round(small / 100))));
+        const sandRank = rankNormalize(fbmField(w, h, rng, Math.max(2, Math.round(small / 100))));
+        const snowDustRank = rankNormalize(fbmField(w, h, rng, Math.max(6, Math.round(small / 8))));
+        const sandDustRank = rankNormalize(fbmField(w, h, rng, Math.max(6, Math.round(small / 8))));
+        const waterRank = rankNormalize(fbmField(w, h, rng, Math.max(2, Math.round(small / 70))));
+        const cell = (rank, prob) => {
+            const data = new Uint8Array(n);
+            for (let i = 0; i < n; i++) data[i] = rank[i] >= 1 - prob[i] ? 1 : 0;
+            return data;
+        };
+        const dirt = cell(dirtRank, pDirt);
+        const dirtOpen = erodeMask(dirt, w, h); // переходные тайлы снега/песка лягут на его фон
+        const snow = cell(snowRank, pSnowZone);
+        const snowDust = cell(snowDustRank, pSnowDust);
+        const sand = cell(sandRank, pSandZone);
+        const sandDust = cell(sandDustRank, pSandDust);
+        for (let i = 0; i < n; i++) {
+            snow[i] = (snow[i] | snowDust[i]) & dirtOpen[i];
+            sand[i] = (sand[i] | sandDust[i]) & dirtOpen[i];
+        }
+        const water = separateLayer(cell(waterRank, pWater), [dirt], 2, w, h);
+        const snow2 = separateLayer(snow, [water], 2, w, h);
+        const sand2 = separateLayer(sand, [water, snow2], 2, w, h);
+
+        return {
+            w, h,
+            masks: {
+                "grass_dirt.png": dirt,
+                "grass_water.png": water,
+                "snow_dirt.png": snow2,
+                "sand_dirt.png": sand2,
+            },
+            climate: { temp, moisture, snowZone, sandZone },
+        };
+    }
+
+    // Именованные палитры объектов мира (имена из реестра objects_data.js;
+    // отсутствующие в реестре молча пропускаются).
+    const WORLD_OBJ_NAMES = {
+        bones: ["skeleton", "bones_pile", "bones_hand", "bones_stakes", "skull_cow", "ribcage",
+                "skulls_two", "skulls_pile", "skulls_pile_m", "arch_bones"],
+        desertTrees: ["tree_palm", "tree_dead_big", "tree_dead_small", "tree_dead_sparse"],
+        desertTrash: ["amphora_broken", "amphora_cracked", "jug_shards"],
+        forestFloor: ["log_hollow", "log_mushrooms", "log_long", "log_carved", "stump_wide",
+                      "stump_open", "stump_hollow", "stump_lantern"],
+        villageNorth: ["banner_boot_snow", "banner_axes_snow", "banner_anvil_snow", "banner_goose_snow",
+                       "banner_beer_snow", "banner_ornate_snow", "sign_wood_snow", "sign_arrow_snow",
+                       "sign_arrows_snow", "log_small_snow", "stump_snow", "mound_snow", "mounds_snow",
+                       "barrel", "barrel_large", "crate_plants"],
+        villageWarm: ["barrel", "barrel_large", "barrel_marked", "barrel_owl", "signpost",
+                      "signpost_small", "signpost_big", "notice_board", "stall", "wood_arbor",
+                      "arbor_wood", "fence", "fence_wattle", "fence_branch", "fence_lattice",
+                      "fence_woven", "shield_wall", "tools_wall", "crate_plants", "log_carved"],
+        villageCraft: ["anvil", "forge_big", "pottery_bench", "bench_pottery", "loom",
+                       "spinning_wheel", "alchemy_table", "bench_potions"],
+        wellsNorth: ["well_bucket_snow"],
+        wellsWarm: ["well_roof", "well_stone", "well_gable", "well_old", "well_tub", "fountain_small"],
+        ruinsCenter: ["ruin_gate", "stonecircle_rune", "rune_gate", "tower_tall", "tower_round",
+                      "tower_fire", "root_plaza", "stump_plaza"],
+        ruinsSupport: ["column_stump", "column_lie", "column_fallen", "column_broken_small",
+                       "column_stub", "column_piece", "column_drum", "columns_lie_pair", "column_base",
+                       "column_plinth", "column_knob", "column_mossy", "column_frag", "columns_pair",
+                       "column_tall", "rubble_pile", "arch_ruin", "arch_moss", "wall_corner",
+                       "wall_vine", "ruins_floor", "slab_rune", "menhir_round", "menhir_moss",
+                       "obelisk_mossy", "chalice_stone", "stone_spiral", "amphora_broken"],
+        bonesCenter: ["skull_cow", "bones_pile", "skeleton", "ribcage"],
+        bonesSupport: ["skulls_two", "bones_hand", "bones_stakes", "skulls_pile", "skulls_pile_m",
+                       "arch_bones", "pit_cracked", "pit_deep", "pit_square", "rocks_cairn",
+                       "stones_drygrass", "amphora_broken", "jug_shards"],
+    };
+
+    // Логичная расстановка объектов мира: точки интереса (деревни, руины, костища)
+    // сгущённым поиском с минимальной дистанцией (упрощённый blue-noise), кластерная
+    // расстановка вокруг центра, затем амбиент по биомам ячеек (север — снежные
+    // объекты, юг — камни и кости, середина — лес с полянами). items: [{ name,
+    // group?, weight?, cellsX, cellsY }] в порядке индексов реестра.
+    function generateWorldObjects({ w, h, seed = 1, masks, climate = null, items, ts = 32 }) {
+        if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1) {
+            throw new Error("dualgrid.generateWorldObjects: размеры должны быть целыми ≥ 1");
+        }
+        const rng = mulberry32(hashSeed(`${typeof seed === "number" ? seed >>> 0 : String(seed)}:world-objects`));
+        const n = w * h;
+        const water = masks && masks["grass_water.png"];
+        const snow = masks && masks["snow_dirt.png"];
+        const sand = masks && masks["sand_dirt.png"];
+        const snowZone = climate && climate.snowZone, sandZone = climate && climate.sandZone;
+        const byName = new Map(items.map((it, i) => [it.name, i]));
+        const resolve = (names) => names.map((nm) => byName.get(nm)).filter((v) => v !== undefined);
+
+        const occupied = new Uint8Array(n);
+        const clearing = new Uint8Array(n); // вокруг POI амбиент не растёт
+        const placements = [];
+        const pois = [];
+
+        const isLand = (x, y) => x >= 0 && y >= 0 && x < w && y < h && !(water && water[y * w + x]);
+        const biomeAt = (x, y) => {
+            const k = y * w + x;
+            if (snow && snow[k]) return "snow";
+            if (sand && sand[k]) return "desert";
+            if (snowZone && snowZone[k] > 0.5) return "snow";
+            if (sandZone && sandZone[k] > 0.5) return "desert";
+            return "grass";
+        };
+        function canPlace(t, x, y) {
+            const fp = objectFootprint(items[t], x, y, ts);
+            if (fp.x0 < 0 || fp.y0 < 0 || fp.x1 >= w || fp.y1 >= h) return false;
+            for (let fy = fp.y0; fy <= fp.y1; fy++) {
+                for (let fx = fp.x0; fx <= fp.x1; fx++) {
+                    const k = fy * w + fx;
+                    if (occupied[k] || (water && water[k])) return false;
+                }
+            }
+            return true;
+        }
+        function place(t, x, y) {
+            if (!canPlace(t, x, y)) return false;
+            const fp = objectFootprint(items[t], x, y, ts);
+            for (let fy = fp.y0; fy <= fp.y1; fy++) {
+                for (let fx = fp.x0; fx <= fp.x1; fx++) occupied[fy * w + fx] = 1;
+            }
+            placements.push([t, x, y]);
+            return true;
+        }
+        const weightOf = (t) => Math.max(0.1, items[t].weight || 1);
+        function pickFrom(pool) { // pool: [[t, вес], …]
+            let total = 0;
+            for (const [, wv] of pool) total += wv;
+            let r = rng() * total;
+            for (const [t, wv] of pool) { r -= wv; if (r <= 0) return t; }
+            return pool[pool.length - 1][0];
+        }
+        function placeCluster(centerNames, supportNames, cx, cy, { support = 6, radius = 8,
+                                                                  craftNames = null, craftCount = 0 } = {}) {
+            const cPool = resolve(centerNames).map((t) => [t, 1]);
+            const sPool = resolve(supportNames).map((t) => [t, 1]);
+            for (let t = 0; t < 12 && cPool.length; t++) { // центр с джиттером
+                if (place(pickFrom(cPool), cx + Math.floor(rng() * 7) - 3, cy + Math.floor(rng() * 7) - 3)) break;
+            }
+            const count = support + Math.floor(rng() * 4);
+            const ring = (pool, rMin, rMax) => {
+                for (let t = 0; t < 14 && pool.length; t++) {
+                    const ang = rng() * Math.PI * 2;
+                    const dist = rMin + rng() * (rMax - rMin);
+                    const x = Math.round(cx + Math.cos(ang) * dist);
+                    const y = Math.round(cy + Math.sin(ang) * dist * 0.8);
+                    if (isLand(x, y) && place(pickFrom(pool), x, y)) break;
+                }
+            };
+            for (let k = 0; k < count; k++) ring(sPool, 2, radius);
+            const crPool = resolve(craftNames || []).map((t) => [t, 1]);
+            for (let k = 0; k < craftCount; k++) ring(crPool, 3, Math.max(4, radius - 2));
+        }
+        function markClearing(cx, cy, r) {
+            for (let y = Math.max(0, cy - r); y <= Math.min(h - 1, cy + r); y++) {
+                for (let x = Math.max(0, cx - r); x <= Math.min(w - 1, cx + r); x++) {
+                    if (Math.max(Math.abs(x - cx), Math.abs(y - cy)) <= r) clearing[y * w + x] = 1;
+                }
+            }
+        }
+        const sites = [];
+        const minDist = (x, y) => {
+            let m = Infinity;
+            for (const s of sites) m = Math.min(m, Math.max(Math.abs(s.x - x), Math.abs(s.y - y)));
+            return m;
+        };
+        function findSite({ tries = 64, gap = 30, edge = 14, biome = null, middleBias = 0 } = {}) {
+            let best = null, bestScore = -Infinity;
+            for (let t = 0; t < tries; t++) {
+                const x = edge + Math.floor(rng() * Math.max(1, w - 2 * edge));
+                const y = edge + Math.floor(rng() * Math.max(1, h - 2 * edge));
+                if (!isLand(x, y)) continue;
+                if (biome && biomeAt(x, y) !== biome) continue;
+                const d = minDist(x, y);
+                if (d < gap) continue;
+                let score = d;
+                if (middleBias) score += middleBias * (1 - Math.abs(y / Math.max(1, h - 1) - 0.5) * 2);
+                if (score > bestScore) { bestScore = score; best = { x, y }; }
+            }
+            return best;
+        }
+
+        // 1) Точки интереса. Количество — от площади карты.
+        const area = w * h;
+        const nVillages = Math.max(1, Math.round(area / 26000));
+        const nRuins = Math.max(1, Math.round(area / 34000));
+        const nBones = Math.max(1, Math.round(area / 52000));
+        for (let k = 0; k < nVillages; k++) {
+            const s = findSite({ gap: 34, edge: 16, biome: "grass", middleBias: 10 }) ||
+                      findSite({ gap: 30, edge: 16, middleBias: 4 });
+            if (!s) continue;
+            sites.push(s); pois.push({ type: "village", x: s.x, y: s.y });
+            const k = s.y * w + s.x;
+            const north = snowZone ? snowZone[k] > 0.3 : biomeAt(s.x, s.y) === "snow";
+            placeCluster(north ? WORLD_OBJ_NAMES.wellsNorth : WORLD_OBJ_NAMES.wellsWarm,
+                         north ? WORLD_OBJ_NAMES.villageNorth : WORLD_OBJ_NAMES.villageWarm,
+                         s.x, s.y, { support: 6, radius: 7,
+                                     craftNames: WORLD_OBJ_NAMES.villageCraft,
+                                     craftCount: 1 + Math.floor(rng() * 2) });
+            markClearing(s.x, s.y, 10);
+        }
+        for (let k = 0; k < nRuins; k++) {
+            const s = findSite({ gap: 30, edge: 14, middleBias: 6 });
+            if (!s) continue;
+            sites.push(s); pois.push({ type: "ruins", x: s.x, y: s.y });
+            placeCluster(WORLD_OBJ_NAMES.ruinsCenter, WORLD_OBJ_NAMES.ruinsSupport,
+                         s.x, s.y, { support: 7, radius: 8 });
+            markClearing(s.x, s.y, 10);
+        }
+        for (let k = 0; k < nBones; k++) {
+            const s = findSite({ gap: 26, edge: 12, biome: "desert" }) ||
+                      findSite({ gap: 24, edge: 12 });
+            if (!s) continue;
+            sites.push(s); pois.push({ type: "bones", x: s.x, y: s.y });
+            placeCluster(WORLD_OBJ_NAMES.bonesCenter, WORLD_OBJ_NAMES.bonesSupport,
+                         s.x, s.y, { support: 5, radius: 6 });
+            markClearing(s.x, s.y, 8);
+        }
+
+        // 2) Амбиент по биомам. Палитра: список [индекс, вес] с групповым множителем.
+        const byGroup = (group) => items.map((it, i) => (it.group === group ? i : -1)).filter((i) => i >= 0);
+        const weighted = (list, gw) => list.map((t) => [t, weightOf(t) * gw]);
+        const poolSnow = weighted(byGroup("snow"), 1);
+        const poolDesert = [
+            ...weighted(byGroup("stones"), 3),
+            ...weighted(resolve(WORLD_OBJ_NAMES.bones), 2),
+            ...weighted(resolve(WORLD_OBJ_NAMES.desertTrees), 1.2),
+            ...weighted(resolve(WORLD_OBJ_NAMES.desertTrash), 0.8),
+        ];
+        const poolGrass = [
+            ...weighted(byGroup("trees"), 3),
+            ...weighted(byGroup("bushes"), 1.5),
+            ...weighted(byGroup("plants"), 1.5),
+            ...weighted(byGroup("stones"), 0.6),
+            ...weighted(resolve(WORLD_OBJ_NAMES.forestFloor), 0.9),
+        ];
+        const forest = rankNormalize(fbmField(w, h, rng, Math.max(3, Math.round(Math.min(w, h) / 26))));
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const k = y * w + x;
+                if ((water && water[k]) || occupied[k] || clearing[k]) continue;
+                let den, pool;
+                const b = biomeAt(x, y);
+                if (b === "snow") { den = 0.055; pool = poolSnow; }
+                else if (b === "desert") { den = 0.045; pool = poolDesert; }
+                else { den = 0.055 + 0.10 * forest[k]; pool = poolGrass; }
+                if (rng() >= den) continue;
+                place(pickFrom(pool), x, y);
+            }
+        }
+        return { placements, pois };
     }
 
     // ── МАНИФЕСТ И ФАЙЛ КАРТЫ (JSON) ──────────────────────────────────────────
@@ -889,6 +1217,7 @@ function createDualGrid() {
     }
 
     return { build, update, tileIndex, detectLayout, generateMap, separateLayer, dilateMask,
+             fbmField, rankNormalize, generateWorld, generateWorldObjects, WORLD_OBJ_NAMES,
              makeManifest, makeMap, mapFromManifest, mapFromJSON, TILE_CORNERS,
              objectRect, objectFootprint, generateObjects,
              buildObjects, syncObjects, placeObject, eraseObjectAt, objectAt,

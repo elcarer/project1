@@ -207,6 +207,7 @@
         <span class="group">сид:
             <input id="inpSeed" type="number" value="10" style="width:80px">
             <button id="btnGenerate">🎲 Сгенерировать</button>
+            <button id="btnWorld" title="открытый мир с биомными поясами: на севере снега и снежные объекты, на юге пустыня с костями и камнями, в середине — деревни, руины, озёра">🌍 Сгенерировать мир</button>
         </span>
     </div>
     <div class="row">
@@ -336,7 +337,7 @@
 <script>
 (async () => {   // классический скрипт с обёрткой — работает и на file:// (модули там заблокированы)
 
-console.log("dualgrid_editor: v4 — слой объектов: вкладки Земля/Объекты, палитра, вес/плотность, форматы v2 (2026-09-13)");
+console.log("dualgrid_editor: v5 — кнопка «Сгенерировать мир»: биомные пояса (север/юг), POI-кластеры, логичный амбиент (2026-09-14)");
 
 const TS = 32;                    // размер тайла (и ячейки данных) в пикселях мира
 const dual = createDualGrid();    // глобальная из modules/dualgrid.js
@@ -395,13 +396,13 @@ function applyView() {
 }
 function fitView() {
     const s = Math.min(wrap.clientWidth / (state.w * TS), wrap.clientHeight / (state.h * TS));
-    view.scale = Math.max(0.1, Math.min(8, s));
+    view.scale = Math.max(0.02, Math.min(8, s)); // 0.02 — чтобы вписывались карты 500×500+
     view.ox = (wrap.clientWidth - state.w * TS * view.scale) / 2;
     view.oy = (wrap.clientHeight - state.h * TS * view.scale) / 2;
     applyView();
 }
 function zoomAt(mx, my, factor) {
-    const ns = Math.max(0.1, Math.min(8, view.scale * factor));
+    const ns = Math.max(0.02, Math.min(8, view.scale * factor));
     view.ox = mx - (mx - view.ox) * (ns / view.scale);
     view.oy = my - (my - view.oy) * (ns / view.scale);
     view.scale = ns;
@@ -1118,6 +1119,43 @@ async function generateAll(withUndo = true) {
     msg("сгенерировано по манифесту (пол и объекты)");
 }
 
+// ── ГЕНЕРАЦИЯ МИРА (открытый мир для РПГ) ─────────────────────────────────────
+// dual.generateWorld/generateWorldObjects — чистые функции модуля (движок сможет
+// звать их при создании новой игры); здесь только применение результата к слоям.
+async function generateWorldMap(withUndo = true) {
+    const w = state.w, h = state.h;
+    msg(`генерация мира ${w}×${h}…`);
+    await new Promise((r) => setTimeout(r, 30)); // дать статусу отрисоваться
+    if (withUndo) pushUndo();
+    let world, obj = null;
+    try {
+        world = dual.generateWorld({ w, h, seed: state.seed });
+        if (objHolder && objItems.length) {
+            obj = dual.generateWorldObjects({ w, h, seed: state.seed, masks: world.masks,
+                climate: world.climate,
+                items: objItems.map((it) => ({ name: it.name, group: it.group, weight: it.weight,
+                    cellsX: it.cellsX, cellsY: it.cellsY })) });
+        }
+    } catch (err) {
+        if (withUndo) { state.undo.pop(); updateUndoButtons(); }
+        msg("ошибка генерации мира: " + err.message);
+        return;
+    }
+    for (const l of state.layers) {
+        const m = world.masks[l.name];
+        l.data = m || new Uint8Array(w * h); // слой с чужим именем очищается
+        l.container = buildContainer(l);
+    }
+    if (obj) {
+        state.objects.placements = obj.placements;
+        state.world = { pois: obj.pois }; // точки интереса последней генерации мира
+    }
+    state.sel = null; state.paste = null;
+    syncObjects(false);
+    rebuildRoot(); refreshAll(); selfTest(); fitView();
+    msg(`мир сгенерирован: ${w}×${h}, POI ${obj ? obj.pois.length : 0}, объектов ${state.objects.placements.length}`);
+}
+
 // ── ЗАГРУЗКА JSON (манифест | файл карты) ────────────────────────────────────
 function baseName(p) { return String(p).split(/[\\/]/).pop(); }
 function imageToDataURL(src) {
@@ -1590,6 +1628,11 @@ $("btnGenerate").onclick = () => {
     resizeMap($("inpW").value, $("inpH").value); // размер из полей (no-op, если не менялся)
     generateAll();
 };
+$("btnWorld").onclick = () => {
+    state.seed = Number($("inpSeed").value) || 0;
+    resizeMap($("inpW").value, $("inpH").value);
+    generateWorldMap();
+};
 $("btnSaveManifest").onclick = saveManifest;
 $("btnSaveMap").onclick = saveMap;
 $("btnExportPng").onclick = exportPNG;
@@ -1693,6 +1736,14 @@ window.addEventListener("drop", (e) => {
 window.__MAPEDITOR = {
     dual, state, view, textures, images, objItems, objHolder, app,
     generateAll, generateObjectsOnly, selfTest, resizeMap, newMap, fitView, undo, redo,
+    applyView, generateWorldMap,
+    generateWorld: (opts = {}) => {
+        // для автоматизации: fire-and-forget, результат смотреть в stMsg/stTest
+        if (opts.seed != null) { state.seed = opts.seed; $("inpSeed").value = opts.seed; }
+        if (opts.w && opts.h) { $("inpW").value = opts.w; $("inpH").value = opts.h; resizeMap(opts.w, opts.h); }
+        generateWorldMap();
+        return { w: state.w, h: state.h, seed: state.seed };
+    },
     paintCell: (i, j, v = 1) => { const l = activeLayer(); pushUndo(); paintCell(l, i, j, v); syncLayers([l]); },
     stamp: (i, j, tile = state.stampTile) => { const l = activeLayer(); pushUndo(); stamp(l, i, j, tile); syncLayers([l]); },
     bucket: (i, j) => { const l = activeLayer(); pushUndo(); bucket(l, i, j, 1); syncLayers([l]); },
