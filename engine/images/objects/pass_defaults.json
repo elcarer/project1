@@ -1,4 +1,1496 @@
 {
- "comment": "Ручные переопределения сеток проходимости. Формат как у экспорта из редактора («💾 все сетки»): items[{name, pass}], pass — строка длиной cellsX*cellsY, построчно сверху вниз, 1 = клетка НЕпроходима. Скрипт scripts/cut_objects.py применяет этот файл поверх авторасчёта (низ объекта непроходим) при генерации.",
- "items": []
+ "comment": "Сетки проходимости объектов редактора. pass — строка длиной cellsX*cellsY, построчно СВЕРХУ ВНИЗ: 1 = клетка НЕпроходима, 0 = проходима (последняя строка — основание объекта). Правьте только значения pass; длина строки обязана остаться cellsX*cellsY.",
+ "items": [
+  {
+   "name": "crystal_blue",
+   "ru": "Хрусталь синий",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "telescope",
+   "ru": "Телескоп",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "tree_sakura",
+   "ru": "Сакура",
+   "cellsX": 6,
+   "cellsY": 6,
+   "pass": "000000000000000000000000000000000100"
+  },
+  {
+   "name": "scroll",
+   "ru": "Свиток",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "book",
+   "ru": "Книга",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "tree_birch",
+   "ru": "Берёза",
+   "cellsX": 3,
+   "cellsY": 6,
+   "pass": "000000000000000010"
+  },
+  {
+   "name": "keys",
+   "ru": "Ключи",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "fairy",
+   "ru": "Фея",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "tree_oak_big",
+   "ru": "Дуб старый",
+   "cellsX": 8,
+   "cellsY": 8,
+   "pass": "0000000000000000000000000000000000000000000000000001110000111100"
+  },
+  {
+   "name": "pond",
+   "ru": "Пруд",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "jug",
+   "ru": "Кувшин",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "vase_orange",
+   "ru": "Ваза узорная",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "pot_dark",
+   "ru": "Горшок тёмный",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "gem_green",
+   "ru": "Самоцвет зелёный",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "gems_blue",
+   "ru": "Самоцветы синие",
+   "cellsX": 1,
+   "cellsY": 2,
+   "pass": "01"
+  },
+  {
+   "name": "gem_teal",
+   "ru": "Самоцвет бирюзовый",
+   "cellsX": 1,
+   "cellsY": 2,
+   "pass": "01"
+  },
+  {
+   "name": "vase_set",
+   "ru": "Вазы, набор",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "gem_blue",
+   "ru": "Самоцвет синий",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "gem_red",
+   "ru": "Самоцвет красный",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "stones",
+   "ru": "Камни",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "gems_navy",
+   "ru": "Самоцветы: синие",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0101"
+  },
+  {
+   "name": "gem_ice",
+   "ru": "Самоцвет ледяной",
+   "cellsX": 1,
+   "cellsY": 2,
+   "pass": "01"
+  },
+  {
+   "name": "moss",
+   "ru": "Мох",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "tree_topiary",
+   "ru": "Топиарий",
+   "cellsX": 2,
+   "cellsY": 4,
+   "pass": "00000001"
+  },
+  {
+   "name": "tree_willow",
+   "ru": "Ива",
+   "cellsX": 4,
+   "cellsY": 5,
+   "pass": "00000000000000000010"
+  },
+  {
+   "name": "flowers_lupine",
+   "ru": "Люпины",
+   "cellsX": 2,
+   "cellsY": 3,
+   "pass": "000001"
+  },
+  {
+   "name": "gem_amber",
+   "ru": "Янтарь",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "sundial_fern",
+   "ru": "Солнечные часы",
+   "cellsX": 3,
+   "cellsY": 6,
+   "pass": "000000000111111111"
+  },
+  {
+   "name": "gem_purple",
+   "ru": "Самоцвет лиловый",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "butterfly_frame",
+   "ru": "Бабочки в рамке",
+   "cellsX": 4,
+   "cellsY": 4,
+   "pass": "0000011101110111"
+  },
+  {
+   "name": "leaf_gold",
+   "ru": "Золотой лист",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "tree_blue_big",
+   "ru": "Древо синее",
+   "cellsX": 9,
+   "cellsY": 6,
+   "pass": "000000000000000000000000000000000000000000000000011100"
+  },
+  {
+   "name": "tree_lush",
+   "ru": "Дерево пышное",
+   "cellsX": 4,
+   "cellsY": 6,
+   "pass": "000000000000000000000010"
+  },
+  {
+   "name": "flowers_pink",
+   "ru": "Цветы розовые",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "bush_round_dark",
+   "ru": "Куст тёмный",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "bush_double",
+   "ru": "Кусты парой",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "bush_cypress",
+   "ru": "Туя",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "bush_berry",
+   "ru": "Куст с ягодами",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "bush_round",
+   "ru": "Куст круглый",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "bush_leafy",
+   "ru": "Куст лиственный",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "bush_hedge",
+   "ru": "Живая изгородь",
+   "cellsX": 3,
+   "cellsY": 2,
+   "pass": "000111"
+  },
+  {
+   "name": "moss_patch",
+   "ru": "Мох-полянка",
+   "cellsX": 2,
+   "cellsY": 1,
+   "pass": "01"
+  },
+  {
+   "name": "rock_moss",
+   "ru": "Камень со мхом",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "alchemy_table",
+   "ru": "Стол алхимика",
+   "cellsX": 4,
+   "cellsY": 4,
+   "pass": "0000000000000111"
+  },
+  {
+   "name": "anvil",
+   "ru": "Наковальня",
+   "cellsX": 5,
+   "cellsY": 3,
+   "pass": "000000001001110"
+  },
+  {
+   "name": "loom",
+   "ru": "Ткацкий станок",
+   "cellsX": 4,
+   "cellsY": 4,
+   "pass": "0000000000000111"
+  },
+  {
+   "name": "spinning_wheel",
+   "ru": "Прялка",
+   "cellsX": 4,
+   "cellsY": 4,
+   "pass": "0000000000000111"
+  },
+  {
+   "name": "runestone",
+   "ru": "Рунный камень",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "post_vine",
+   "ru": "Столб с хмелем",
+   "cellsX": 1,
+   "cellsY": 3,
+   "pass": "001"
+  },
+  {
+   "name": "well",
+   "ru": "Колодец большой",
+   "cellsX": 8,
+   "cellsY": 10,
+   "pass": "00000000000000000000000000000000000000000000000000000000011111110111111100111111"
+  },
+  {
+   "name": "pottery_bench",
+   "ru": "Гончарная лавка",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "easel",
+   "ru": "Мольберт",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "shield_wall",
+   "ru": "Щит настенный",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "topiary_chime",
+   "ru": "Топиарий с подвеской",
+   "cellsX": 2,
+   "cellsY": 5,
+   "pass": "0000000001"
+  },
+  {
+   "name": "well_tub",
+   "ru": "Колодец-корыто",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "pottery_wheel",
+   "ru": "Гончарный круг",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "tools_wall",
+   "ru": "Инструменты",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "flower_stand",
+   "ru": "Стойка с цветами",
+   "cellsX": 2,
+   "cellsY": 4,
+   "pass": "00010101"
+  },
+  {
+   "name": "rock_amphora",
+   "ru": "Скала с амфорой",
+   "cellsX": 4,
+   "cellsY": 6,
+   "pass": "000000000000011101110111"
+  },
+  {
+   "name": "rune_plate",
+   "ru": "Рунная табличка",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "runestone_moss",
+   "ru": "Надгробие",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "fence",
+   "ru": "Забор",
+   "cellsX": 3,
+   "cellsY": 2,
+   "pass": "000111"
+  },
+  {
+   "name": "totem_small",
+   "ru": "Тотем малый",
+   "cellsX": 1,
+   "cellsY": 2,
+   "pass": "01"
+  },
+  {
+   "name": "signpost",
+   "ru": "Указатель",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "well_roof",
+   "ru": "Колодец с крышей",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "barrel_owl",
+   "ru": "Бочка с совой",
+   "cellsX": 2,
+   "cellsY": 4,
+   "pass": "00010101"
+  },
+  {
+   "name": "birdhouses",
+   "ru": "Скворечники",
+   "cellsX": 2,
+   "cellsY": 3,
+   "pass": "000001"
+  },
+  {
+   "name": "windchime_lantern",
+   "ru": "Фонарь-подвеска",
+   "cellsX": 2,
+   "cellsY": 5,
+   "pass": "0000000001"
+  },
+  {
+   "name": "totem_deer",
+   "ru": "Тотем оленя",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "leaf_deco",
+   "ru": "Лист на подставке",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "fountain_small",
+   "ru": "Фонтан малый",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "bench_simple",
+   "ru": "Скамья простая",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "bench_carved",
+   "ru": "Скамья резная",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "table_round",
+   "ru": "Стол круглый",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "planter_flowers",
+   "ru": "Клумба",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "torch_deadtree",
+   "ru": "Факел на сухом древе",
+   "cellsX": 2,
+   "cellsY": 4,
+   "pass": "00000001"
+  },
+  {
+   "name": "watering_can",
+   "ru": "Лейка",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "bowl_herbs",
+   "ru": "Чаша с травами",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "pot_flowers",
+   "ru": "Горшок с цветами",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "crate_plants",
+   "ru": "Ящик с растениями",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "pots_clay",
+   "ru": "Горшки глиняные",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "loom_workshop",
+   "ru": "Ткацкая мастерская",
+   "cellsX": 6,
+   "cellsY": 6,
+   "pass": "000000000000000000000000011111000111"
+  },
+  {
+   "name": "log_small",
+   "ru": "Пенёк",
+   "cellsX": 1,
+   "cellsY": 2,
+   "pass": "01"
+  },
+  {
+   "name": "shields_wall",
+   "ru": "Щиты на стойках",
+   "cellsX": 6,
+   "cellsY": 3,
+   "pass": "000000000000000000"
+  },
+  {
+   "name": "sign_flask_green",
+   "ru": "Вывеска зелья",
+   "cellsX": 2,
+   "cellsY": 3,
+   "pass": "000000"
+  },
+  {
+   "name": "sign_flask_purple",
+   "ru": "Вывеска зелья лиловая",
+   "cellsX": 2,
+   "cellsY": 3,
+   "pass": "000000"
+  },
+  {
+   "name": "bread_basket",
+   "ru": "Корзина хлеба",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "egg_basket",
+   "ru": "Корзина яиц",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "signpost_small",
+   "ru": "Столбик-указатель",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "notice_board",
+   "ru": "Доска объявлений",
+   "cellsX": 3,
+   "cellsY": 3,
+   "pass": "000000010"
+  },
+  {
+   "name": "birdbath",
+   "ru": "Поилка для птиц",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "hanging_basket",
+   "ru": "Подвеска с улиткой",
+   "cellsX": 2,
+   "cellsY": 4,
+   "pass": "00010101"
+  },
+  {
+   "name": "antlers",
+   "ru": "Рога оленьи",
+   "cellsX": 3,
+   "cellsY": 2,
+   "pass": "000010"
+  },
+  {
+   "name": "barrel",
+   "ru": "Бочка",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "signpost_big",
+   "ru": "Указатель большой",
+   "cellsX": 3,
+   "cellsY": 6,
+   "pass": "000000000000000010"
+  },
+  {
+   "name": "stall",
+   "ru": "Торговый навес",
+   "cellsX": 5,
+   "cellsY": 6,
+   "pass": "000000000000000000001111111111"
+  },
+  {
+   "name": "chair",
+   "ru": "Кресло",
+   "cellsX": 2,
+   "cellsY": 3,
+   "pass": "000101"
+  },
+  {
+   "name": "table",
+   "ru": "Стол",
+   "cellsX": 3,
+   "cellsY": 3,
+   "pass": "000111111"
+  },
+  {
+   "name": "shield_stones",
+   "ru": "Щит с камнями",
+   "cellsX": 4,
+   "cellsY": 2,
+   "pass": "00000111"
+  },
+  {
+   "name": "pedestal",
+   "ru": "Пьедестал",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "statue_face",
+   "ru": "Статуя лика",
+   "cellsX": 4,
+   "cellsY": 6,
+   "pass": "000000000000000001110111"
+  },
+  {
+   "name": "pinecones",
+   "ru": "Шишки",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "arch_bones",
+   "ru": "Арка из костей",
+   "cellsX": 6,
+   "cellsY": 6,
+   "pass": "000000000000000000000000000000011011"
+  },
+  {
+   "name": "flowers_blue",
+   "ru": "Цветы синие",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "candles",
+   "ru": "Канделябр",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "horse_head",
+   "ru": "Голова коня",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "tree_palm",
+   "ru": "Пальма",
+   "cellsX": 4,
+   "cellsY": 4,
+   "pass": "0000000000000010"
+  },
+  {
+   "name": "tree_willow_small",
+   "ru": "Ива малая",
+   "cellsX": 3,
+   "cellsY": 4,
+   "pass": "000000000010"
+  },
+  {
+   "name": "shields_beerhorn",
+   "ru": "Щиты: пиво и рога",
+   "cellsX": 2,
+   "cellsY": 4,
+   "pass": "00000000"
+  },
+  {
+   "name": "sun",
+   "ru": "Солнце",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "tree_white_tall",
+   "ru": "Дерево белое высокое",
+   "cellsX": 6,
+   "cellsY": 6,
+   "pass": "000000000000000000000000000000000100"
+  },
+  {
+   "name": "sign_park",
+   "ru": "Щит «Парк»",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "signpost_two",
+   "ru": "Указатель маршрутный",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "owl",
+   "ru": "Сова",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "flowers_violet",
+   "ru": "Цветы фиолетовые",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "tree_cypress_dark",
+   "ru": "Кипарис тёмный",
+   "cellsX": 2,
+   "cellsY": 6,
+   "pass": "000000000001"
+  },
+  {
+   "name": "obelisk",
+   "ru": "Обелиск",
+   "cellsX": 6,
+   "cellsY": 8,
+   "pass": "000000000000000000000000000000000000011110011111"
+  },
+  {
+   "name": "leaf_lush",
+   "ru": "Лист сочный",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "bird",
+   "ru": "Птица",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "log_hollow",
+   "ru": "Дуплистое бревно",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "grass",
+   "ru": "Трава",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "tree_birch_young",
+   "ru": "Берёза молодая",
+   "cellsX": 2,
+   "cellsY": 5,
+   "pass": "0000000001"
+  },
+  {
+   "name": "moss_mounds",
+   "ru": "Моховые кочки",
+   "cellsX": 3,
+   "cellsY": 2,
+   "pass": "000010"
+  },
+  {
+   "name": "bush_mound",
+   "ru": "Куст-кочка",
+   "cellsX": 3,
+   "cellsY": 3,
+   "pass": "000000111"
+  },
+  {
+   "name": "flowers_white",
+   "ru": "Цветы белые",
+   "cellsX": 2,
+   "cellsY": 3,
+   "pass": "000001"
+  },
+  {
+   "name": "stump_lantern",
+   "ru": "Пень с фонарём",
+   "cellsX": 2,
+   "cellsY": 4,
+   "pass": "00010101"
+  },
+  {
+   "name": "tree_twisted",
+   "ru": "Дерево витое",
+   "cellsX": 4,
+   "cellsY": 7,
+   "pass": "0000000000000000000000000011"
+  },
+  {
+   "name": "bush_wild",
+   "ru": "Куст дикий",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "tree_dead_big",
+   "ru": "Мёртвое древо",
+   "cellsX": 4,
+   "cellsY": 5,
+   "pass": "00000000000000000111"
+  },
+  {
+   "name": "tree_pine",
+   "ru": "Ель",
+   "cellsX": 3,
+   "cellsY": 5,
+   "pass": "000000000000010"
+  },
+  {
+   "name": "root_arch",
+   "ru": "Корневой тоннель",
+   "cellsX": 5,
+   "cellsY": 4,
+   "pass": "00000000000000011111"
+  },
+  {
+   "name": "stump_hollow",
+   "ru": "Дуплистый пень",
+   "cellsX": 2,
+   "cellsY": 3,
+   "pass": "000001"
+  },
+  {
+   "name": "tree_small",
+   "ru": "Дерево малое",
+   "cellsX": 2,
+   "cellsY": 4,
+   "pass": "00000001"
+  },
+  {
+   "name": "log_mushrooms",
+   "ru": "Бревно с грибами",
+   "cellsX": 4,
+   "cellsY": 2,
+   "pass": "00000111"
+  },
+  {
+   "name": "fountain_dragon",
+   "ru": "Фонтан драконий",
+   "cellsX": 10,
+   "cellsY": 10,
+   "pass": "0000000000000000000000000000000000000000000000000000000000000000000000011111111101111111100001111100"
+  },
+  {
+   "name": "bench_potions",
+   "ru": "Лавка со зельями",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "stump_wide",
+   "ru": "Пень широкий",
+   "cellsX": 3,
+   "cellsY": 2,
+   "pass": "000010"
+  },
+  {
+   "name": "fountain_pillar",
+   "ru": "Фонтан-столб",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "log_long",
+   "ru": "Бревно мшистое",
+   "cellsX": 4,
+   "cellsY": 1,
+   "pass": "0111"
+  },
+  {
+   "name": "bench_ornate",
+   "ru": "Скамья узорная",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "root_workshop",
+   "ru": "Корневая мастерская",
+   "cellsX": 5,
+   "cellsY": 5,
+   "pass": "0000000000000001111101110"
+  },
+  {
+   "name": "shields_skull",
+   "ru": "Щиты: дракон и череп",
+   "cellsX": 4,
+   "cellsY": 3,
+   "pass": "000000000000"
+  },
+  {
+   "name": "stump_books",
+   "ru": "Пень с книгами",
+   "cellsX": 3,
+   "cellsY": 2,
+   "pass": "000010"
+  },
+  {
+   "name": "root_cauldron",
+   "ru": "Корневой котёл",
+   "cellsX": 6,
+   "cellsY": 5,
+   "pass": "000000000000000000011111011111"
+  },
+  {
+   "name": "basket_apples",
+   "ru": "Корзина яблок",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "fox",
+   "ru": "Лиса",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "tree_white_wide",
+   "ru": "Дерево белое широкое",
+   "cellsX": 4,
+   "cellsY": 6,
+   "pass": "000000000000000000000010"
+  },
+  {
+   "name": "tree_redroots",
+   "ru": "Древо краснокорневое",
+   "cellsX": 6,
+   "cellsY": 6,
+   "pass": "000000000000000000000000001110011111"
+  },
+  {
+   "name": "candelabrum",
+   "ru": "Канделябр золочёный",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "pegasus",
+   "ru": "Пегас",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "totems_tiki",
+   "ru": "Тотемы тики",
+   "cellsX": 3,
+   "cellsY": 4,
+   "pass": "000000000111"
+  },
+  {
+   "name": "shields_mug",
+   "ru": "Щиты: пиво и змея",
+   "cellsX": 2,
+   "cellsY": 4,
+   "pass": "00000000"
+  },
+  {
+   "name": "stone_bench",
+   "ru": "Каменная скамья",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "rocks_mound",
+   "ru": "Каменная насыпь",
+   "cellsX": 7,
+   "cellsY": 4,
+   "pass": "0000000000000001111110111110"
+  },
+  {
+   "name": "tree_round",
+   "ru": "Дерево круглое",
+   "cellsX": 5,
+   "cellsY": 8,
+   "pass": "0000000000000000000000000000000000000100"
+  },
+  {
+   "name": "palm_tall",
+   "ru": "Пальма высокая",
+   "cellsX": 8,
+   "cellsY": 11,
+   "pass": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000001000"
+  },
+  {
+   "name": "rock_big",
+   "ru": "Валун большой",
+   "cellsX": 3,
+   "cellsY": 2,
+   "pass": "000111"
+  },
+  {
+   "name": "tree_white_bare",
+   "ru": "Дерево белое голое",
+   "cellsX": 10,
+   "cellsY": 9,
+   "pass": "000000000000000000000000000000000000000000000000000000000000000000000000000110000000111000"
+  },
+  {
+   "name": "tree_bonsai_oak",
+   "ru": "Дуб-бонсай",
+   "cellsX": 9,
+   "cellsY": 10,
+   "pass": "000000000000000000000000000000000000000000000000000000000000000000000000000110000000110000"
+  },
+  {
+   "name": "grass_tuft",
+   "ru": "Кочка травы",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "rock_small",
+   "ru": "Камешек малый",
+   "cellsX": 2,
+   "cellsY": 1,
+   "pass": "01"
+  },
+  {
+   "name": "rock_flat",
+   "ru": "Камень плоский",
+   "cellsX": 3,
+   "cellsY": 2,
+   "pass": "000111"
+  },
+  {
+   "name": "grass_spiky",
+   "ru": "Трава колючая",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "tree_bonsai_pine",
+   "ru": "Сосна-бонсай",
+   "cellsX": 9,
+   "cellsY": 12,
+   "pass": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000111000000111000"
+  },
+  {
+   "name": "rocks_wide",
+   "ru": "Камни широкие",
+   "cellsX": 6,
+   "cellsY": 4,
+   "pass": "000000000000011111011111"
+  },
+  {
+   "name": "tree_cone",
+   "ru": "Дерево конус",
+   "cellsX": 5,
+   "cellsY": 8,
+   "pass": "0000000000000000000000000000000000000100"
+  },
+  {
+   "name": "tree_oak_meadow",
+   "ru": "Дуб на поляне",
+   "cellsX": 10,
+   "cellsY": 13,
+   "pass": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001110000000111000"
+  },
+  {
+   "name": "rocks_pair",
+   "ru": "Камни парой",
+   "cellsX": 4,
+   "cellsY": 3,
+   "pass": "000000000111"
+  },
+  {
+   "name": "rock_boulder",
+   "ru": "Валун",
+   "cellsX": 3,
+   "cellsY": 2,
+   "pass": "000111"
+  },
+  {
+   "name": "tree_bush_tall",
+   "ru": "Дерево кустовое",
+   "cellsX": 6,
+   "cellsY": 8,
+   "pass": "000000000000000000000000000000000000000000000100"
+  },
+  {
+   "name": "tree_mint",
+   "ru": "Дерево мятное",
+   "cellsX": 8,
+   "cellsY": 7,
+   "pass": "00000000000000000000000000000000000000000000000000001100"
+  },
+  {
+   "name": "tree_white_crown",
+   "ru": "Дерево с белой кроной",
+   "cellsX": 7,
+   "cellsY": 7,
+   "pass": "0000000000000000000000000000000000000000000001100"
+  },
+  {
+   "name": "grass_big",
+   "ru": "Трава большая",
+   "cellsX": 3,
+   "cellsY": 3,
+   "pass": "000000010"
+  },
+  {
+   "name": "rock_pebble",
+   "ru": "Камень-галка",
+   "cellsX": 3,
+   "cellsY": 2,
+   "pass": "000111"
+  },
+  {
+   "name": "rock_tiny",
+   "ru": "Камешек крохотный",
+   "cellsX": 2,
+   "cellsY": 1,
+   "pass": "01"
+  },
+  {
+   "name": "rocks_two",
+   "ru": "Камни двое",
+   "cellsX": 3,
+   "cellsY": 2,
+   "pass": "000111"
+  },
+  {
+   "name": "rocks_pile",
+   "ru": "Камни кучей",
+   "cellsX": 4,
+   "cellsY": 3,
+   "pass": "000000000111"
+  },
+  {
+   "name": "tree_oak_grove",
+   "ru": "Дуб с подлеском",
+   "cellsX": 8,
+   "cellsY": 14,
+   "pass": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001100"
+  },
+  {
+   "name": "tree_spruce_tall",
+   "ru": "Ель высокая",
+   "cellsX": 5,
+   "cellsY": 11,
+   "pass": "0000000000000000000000000000000000000000000000000000100"
+  },
+  {
+   "name": "tree_spruce_fluffy",
+   "ru": "Ель пушистая",
+   "cellsX": 5,
+   "cellsY": 11,
+   "pass": "0000000000000000000000000000000000000000000000000000100"
+  },
+  {
+   "name": "tree_bare_tall",
+   "ru": "Дерево голое высокое",
+   "cellsX": 5,
+   "cellsY": 13,
+   "pass": "00000000000000000000000000000000000000000000000000000000000000100"
+  },
+  {
+   "name": "tree_oak_rock",
+   "ru": "Дуб с камнем",
+   "cellsX": 10,
+   "cellsY": 11,
+   "pass": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000110000"
+  },
+  {
+   "name": "rock_gray",
+   "ru": "Камень серый",
+   "cellsX": 4,
+   "cellsY": 2,
+   "pass": "00000111"
+  },
+  {
+   "name": "bush_round_big",
+   "ru": "Куст круглый большой",
+   "cellsX": 3,
+   "cellsY": 2,
+   "pass": "000111"
+  },
+  {
+   "name": "grass_silver",
+   "ru": "Трава серебристая",
+   "cellsX": 3,
+   "cellsY": 2,
+   "pass": "000010"
+  },
+  {
+   "name": "tree_tall_thicket",
+   "ru": "Дерево с зарослями",
+   "cellsX": 7,
+   "cellsY": 11,
+   "pass": "00000000000000000000000000000000000000000000000000000000000000000000000011100"
+  },
+  {
+   "name": "rocks_small",
+   "ru": "Камешки",
+   "cellsX": 2,
+   "cellsY": 1,
+   "pass": "01"
+  },
+  {
+   "name": "tree_thicket",
+   "ru": "Древо-заросли",
+   "cellsX": 10,
+   "cellsY": 11,
+   "pass": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000111000"
+  },
+  {
+   "name": "grass_dark",
+   "ru": "Трава тёмная",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "tree_bonsai_big",
+   "ru": "Бонсай большой",
+   "cellsX": 10,
+   "cellsY": 10,
+   "pass": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000011111100001001110"
+  },
+  {
+   "name": "grass_small",
+   "ru": "Трава малая",
+   "cellsX": 2,
+   "cellsY": 1,
+   "pass": "01"
+  },
+  {
+   "name": "grass_wild",
+   "ru": "Трава дикая",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "tree_bare_bush",
+   "ru": "Дерево голое с кустом",
+   "cellsX": 8,
+   "cellsY": 8,
+   "pass": "0000000000000000000000000000000000000000000000000000000000011000"
+  },
+  {
+   "name": "branch_dry",
+   "ru": "Сухая ветка",
+   "cellsX": 2,
+   "cellsY": 3,
+   "pass": "000001"
+  },
+  {
+   "name": "scrub_low",
+   "ru": "Кустарник низкий",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "sprout_conifer",
+   "ru": "Хвойный росток",
+   "cellsX": 3,
+   "cellsY": 4,
+   "pass": "000000000010"
+  },
+  {
+   "name": "grass_bits",
+   "ru": "Травинки",
+   "cellsX": 2,
+   "cellsY": 1,
+   "pass": "01"
+  },
+  {
+   "name": "grass_tall",
+   "ru": "Трава высокая",
+   "cellsX": 2,
+   "cellsY": 3,
+   "pass": "000001"
+  },
+  {
+   "name": "sprout_tall",
+   "ru": "Росток высокий",
+   "cellsX": 3,
+   "cellsY": 4,
+   "pass": "000000000010"
+  },
+  {
+   "name": "rock_gray_big",
+   "ru": "Камень серый большой",
+   "cellsX": 4,
+   "cellsY": 3,
+   "pass": "000000000111"
+  },
+  {
+   "name": "bush_big_round",
+   "ru": "Куст большой круглый",
+   "cellsX": 6,
+   "cellsY": 6,
+   "pass": "000000000000000000000000000000011111"
+  },
+  {
+   "name": "rock_mossy",
+   "ru": "Камень мшистый",
+   "cellsX": 4,
+   "cellsY": 2,
+   "pass": "00000111"
+  },
+  {
+   "name": "plant_spiky",
+   "ru": "Растение колючее",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  },
+  {
+   "name": "grass_reeds",
+   "ru": "Камыш",
+   "cellsX": 4,
+   "cellsY": 3,
+   "pass": "000000000111"
+  },
+  {
+   "name": "bush_huge",
+   "ru": "Куст огромный",
+   "cellsX": 7,
+   "cellsY": 5,
+   "pass": "00000000000000000000000000000011110"
+  },
+  {
+   "name": "scrub_brown",
+   "ru": "Кустарник бурый",
+   "cellsX": 4,
+   "cellsY": 3,
+   "pass": "000000000111"
+  },
+  {
+   "name": "grass_sprig",
+   "ru": "Проросль травы",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "reeds_big",
+   "ru": "Камыш большой",
+   "cellsX": 4,
+   "cellsY": 3,
+   "pass": "000000000111"
+  },
+  {
+   "name": "bush_mossy_pair",
+   "ru": "Кусты мшистые парой",
+   "cellsX": 8,
+   "cellsY": 4,
+   "pass": "00000000000000000000000000111110"
+  },
+  {
+   "name": "sprout_small",
+   "ru": "Росток малый",
+   "cellsX": 1,
+   "cellsY": 1,
+   "pass": "1"
+  },
+  {
+   "name": "rocks_gray_big",
+   "ru": "Валуны серые",
+   "cellsX": 8,
+   "cellsY": 4,
+   "pass": "00000000000000000111111100000000"
+  },
+  {
+   "name": "rocks_gray_wide",
+   "ru": "Валуны серые широкие",
+   "cellsX": 8,
+   "cellsY": 5,
+   "pass": "0000000000000000011111000011111100011111"
+  },
+  {
+   "name": "grass_sedge",
+   "ru": "Осока",
+   "cellsX": 2,
+   "cellsY": 2,
+   "pass": "0001"
+  }
+ ]
 }
