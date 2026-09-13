@@ -307,6 +307,11 @@
                     <button id="btnPassReset" title="нижняя строка непроходима, остальное проходимо">сбросить</button>
                     <label style="margin-left:6px"><input id="chkPassOverlay" type="checkbox"> на карте</label>
                 </div>
+                <div class="btnrow">
+                    <button id="btnPassSave" title="все сетки проходимости в JSON — можно править вручную">💾 все сетки</button>
+                    <button id="btnPassLoad" title="применить сетки из отредактированного JSON">📂 сетки</button>
+                    <input id="filePass" type="file" accept=".json,application/json" multiple hidden>
+                </div>
                 <div class="small muted" style="margin-top:6px">красная клетка — непроходима (движок запретит сюда персонажа); клик переключает; по умолчанию непроходим низ объекта</div>
             </div>
         </section>
@@ -884,6 +889,35 @@ function buildPassGrid() {
             };
             g.appendChild(cell);
         }
+    }
+}
+function buildPassExport() {
+    return JSON.stringify({
+        comment: "Сетки проходимости объектов редактора. pass — строка длиной cellsX*cellsY, " +
+            "построчно СВЕРХУ ВНИЗ: 1 = клетка НЕпроходима, 0 = проходима (последняя строка — основание объекта). " +
+            "Правьте только значения pass; длина строки обязана остаться cellsX*cellsY.",
+        items: objItems.map((it) => ({ name: it.name, ru: it.ru, cellsX: it.cellsX, cellsY: it.cellsY, pass: it.pass })),
+    }, null, 1);
+}
+async function loadPassGrids(files) {
+    for (const file of files) {
+        try {
+            const obj = JSON.parse(await file.text());
+            const list = Array.isArray(obj) ? obj : obj.items;
+            if (!Array.isArray(list)) throw new Error("нет массива items");
+            const byName = new Map(objItems.map((it) => [it.name, it]));
+            let applied = 0, skipped = 0;
+            for (const it of list) {
+                const tgt = byName.get(baseName(it.name));
+                if (!tgt || typeof it.pass !== "string" ||
+                    it.pass.length !== tgt.cellsX * tgt.cellsY || /[^01]/.test(it.pass)) { skipped++; continue; }
+                tgt.pass = it.pass;
+                applied++;
+            }
+            buildPassGrid();
+            if (document.getElementById("chkPassOverlay").checked) drawOverlay();
+            msg("сетки проходимости: применено " + applied + ", пропущено " + skipped);
+        } catch (err) { msg("«" + file.name + "»: " + err.message); }
     }
 }
 function refreshObjPaletteSel() {
@@ -1522,6 +1556,12 @@ $("rngDensity").oninput = (e) => {
     $("densVal").textContent = state.objects.density + "%";
 };
 $("chkAvoidWater").onchange = (e) => { state.objects.avoidHideBg = e.target.checked; };
+$("btnPassSave").onclick = () => {
+    downloadBlob("pass_grids.json", new Blob([buildPassExport()], { type: "application/json" }));
+    msg("все сетки проходимости сохранены (pass_grids.json)");
+};
+$("btnPassLoad").onclick = () => $("filePass").click();
+$("filePass").onchange = (e) => { loadPassGrids([...e.target.files]); e.target.value = ""; };
 $("btnPassReset").onclick = () => {
     const it = objItems[state.objSel];
     if (!it) return;
@@ -1622,6 +1662,8 @@ window.__MAPEDITOR = {
         collision: () => dual.buildCollisionMap({ w: state.w, h: state.h,
             items: objHolder.objectsMeta.items,
             placements: state.objects.placements, ts: TS }),
+        passExport: () => buildPassExport(),
+        passImport: (text) => loadPassGrids([new File([text], "pass.json", { type: "application/json" })]),
     },
 };
 

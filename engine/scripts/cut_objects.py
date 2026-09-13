@@ -597,6 +597,21 @@ for it in accepted:
                   "weight": GROUP_WEIGHT[it["group"]],
                   "pass": "0" * (cx * (cy - 1)) + "1" * cx})
 
+# Ручные переопределения проходимости: images/objects/pass_defaults.json
+# (тот же формат, что выдаёт редактор кнопкой «💾 все сетки»; применяется
+# поверх авторасчёта по имени объекта)
+pass_file = os.path.join(OUT, "pass_defaults.json")
+applied = 0
+if os.path.exists(pass_file):
+    with open(pass_file, encoding="utf-8") as fh:
+        overrides = {it["name"]: it["pass"] for it in json.load(fh).get("items", [])
+                     if "name" in it and "pass" in it}
+    for it in items:
+        ps = overrides.get(it["name"])
+        if ps and len(ps) == it["cellsX"] * it["cellsY"] and set(ps) <= {"0", "1"}:
+            it["pass"] = ps
+            applied += 1
+
 meta = dict(source="elven_wood, листы «замени-спрайты-окружения» 1–2", tileSize=32,
             anchor="bottom-center", density=12, count=len(items), items=items)
 with open(os.path.join(OUT, "objects.json"), "w", encoding="utf-8") as fh:
@@ -632,5 +647,6 @@ for f in os.listdir(OUT):
         print("удалён осиротевший", f)
 
 total = sum(os.path.getsize(os.path.join(OUT, i["file"])) for i in items)
+print(f"переопределений проходимости применено: {applied}")
 print(f"готово: {len(items)} объектов ({total // 1024} КБ PNG), objects_data.js "
       f"{os.path.getsize(os.path.join(OUT, 'objects_data.js')) // 1024} КБ")
