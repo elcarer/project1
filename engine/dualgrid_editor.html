@@ -200,8 +200,8 @@
         <input id="fileJson" type="file" accept=".json,application/json" multiple hidden>
         <button id="btnNew" title="очистить данные всех слоёв">📄 Новая</button>
         <span class="group">размер:
-            <input id="inpW" type="number" min="1" max="512" value="30">
-            × <input id="inpH" type="number" min="1" max="512" value="17">
+            <input id="inpW" type="number" min="1" max="2048" value="30">
+            × <input id="inpH" type="number" min="1" max="2048" value="17">
             <button id="btnResize">применить</button>
         </span>
         <span class="group">сид:
@@ -1307,8 +1307,8 @@ function exportPNG() {
 
 // ── РАЗМЕР КАРТЫ / НОВАЯ ─────────────────────────────────────────────────────
 function resizeMap(nw, nh) {
-    nw = Math.max(1, Math.min(512, Math.round(Number(nw) || state.w)));
-    nh = Math.max(1, Math.min(512, Math.round(Number(nh) || state.h)));
+    nw = Math.max(1, Math.min(2048, Math.round(Number(nw) || state.w)));
+    nh = Math.max(1, Math.min(2048, Math.round(Number(nh) || state.h)));
     if (nw === state.w && nh === state.h) return;
     pushUndo();
     for (const l of state.layers) {
@@ -1564,7 +1564,11 @@ $("filePng").onchange = (e) => { openPngFiles([...e.target.files]); e.target.val
 $("fileJson").onchange = (e) => { openJsonFiles([...e.target.files]); e.target.value = ""; };
 $("btnNew").onclick = newMap;
 $("btnResize").onclick = () => resizeMap($("inpW").value, $("inpH").value);
-$("btnGenerate").onclick = () => { state.seed = Number($("inpSeed").value) || 0; generateAll(); };
+$("btnGenerate").onclick = () => {
+    state.seed = Number($("inpSeed").value) || 0;
+    resizeMap($("inpW").value, $("inpH").value); // размер из полей (no-op, если не менялся)
+    generateAll();
+};
 $("btnSaveManifest").onclick = saveManifest;
 $("btnSaveMap").onclick = saveMap;
 $("btnExportPng").onclick = exportPNG;
