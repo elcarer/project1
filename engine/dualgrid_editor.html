@@ -920,6 +920,10 @@ async function loadPassGrids(files) {
         } catch (err) { msg("«" + file.name + "»: " + err.message); }
     }
 }
+// оверлей проходимости зависит от расстановки — при её изменении перерисовываем
+function refreshPassOverlay() {
+    if (document.getElementById("chkPassOverlay").checked) drawOverlay();
+}
 function refreshObjPaletteSel() {
     const pal = $("objPalette");
     // палитра может быть отфильтрована/пересортирована — сверяемся по data-i
@@ -1036,6 +1040,7 @@ function generateObjectsOnly(withUndo = true) {
         avoid: avoidMask(),
     });
     syncObjects();
+    refreshPassOverlay();
     refreshObjectsPanel();
     msg(`объекты разложены: ${state.objects.placements.length} шт. (плотность ${state.objects.density}%)`);
 }
@@ -1450,6 +1455,7 @@ canvas.addEventListener("pointerup", () => {
         drawUI();
     }
     if (drag && (drag.mode === "paint" || drag.mode === "obj")) selfTest(); // сверка после штриха
+    if (drag && drag.mode === "obj") refreshPassOverlay();
     drag = null;
 });
 canvas.addEventListener("wheel", (e) => {
@@ -1576,6 +1582,7 @@ $("btnClearObjects").onclick = () => {
     pushUndo();
     state.objects.placements.length = 0;
     syncObjects();
+    refreshPassOverlay();
     refreshObjectsPanel();
     msg("все объекты сняты");
 };
@@ -1632,11 +1639,12 @@ window.__MAPEDITOR = {
             pushUndo();
             state.objSel = i;
             const ok = objPlaceAt(x, y);
+            refreshPassOverlay();
             selfTest();
             return ok;
         },
-        erase: (x, y) => { pushUndo(); objEraseAt(x, y); selfTest(); },
-        clear: () => { pushUndo(); state.objects.placements.length = 0; syncObjects(); },
+        erase: (x, y) => { pushUndo(); objEraseAt(x, y); refreshPassOverlay(); selfTest(); },
+        clear: () => { pushUndo(); state.objects.placements.length = 0; syncObjects(); refreshPassOverlay(); },
         generate: () => generateObjectsOnly(),
         setWeight: (t, w) => {
             const it = typeof t === "string" ? objItems.find((o) => o.name === t) : objItems[t];
