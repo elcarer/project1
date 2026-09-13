@@ -8,8 +8,10 @@
 метаданные (ru/group/cells/weight/pass) из старого файла. Ничего на диске,
 кроме objects_data.js, не меняет.
 
-Запуск:  python rebuild_registry.py [--check]
+Запуск:  python rebuild_registry.py [--check] [--prune]
          --check — только показать, что изменилось, без записи файла.
+         --prune — вычеркнуть из реестра объекты, чей PNG удалён с диска
+         (без флага такие записи сохраняются со старым data-URL).
 """
 import base64
 import io
@@ -50,6 +52,7 @@ def load_registry(path):
 
 def main():
     check_only = "--check" in sys.argv
+    prune = "--prune" in sys.argv
     tileSize, densityDefault, items = load_registry(REG)
     changed, kept, missing, resized = [], [], [], []
 
@@ -68,18 +71,29 @@ def main():
         else:
             kept.append(it["name"])
 
+    if prune and missing:
+        gone = set(missing)
+        items = [it for it in items if it["name"] not in gone]
+
     print(f"реестр: {len(items)} объектов; совпадает: {len(kept)}, "
           f"обновлено из PNG: {len(changed)}, нет PNG: {len(missing)}")
     for n in changed:
         print("  обновлён:", n)
     for n in missing:
-        print("  НЕТ PNG (оставлен старый data-URL):", n)
+        if prune:
+            print(("  будет вычеркнут (нет PNG): " if check_only
+                   else "  вычеркнут (нет PNG): ") + n)
+        else:
+            print("  НЕТ PNG (оставлен старый data-URL):", n)
     for n, old, new in resized:
         print(f"  размер сменился у {n}: {old[0]}x{old[1]} -> {new[0]}x{new[1]} "
               f"— проверьте cellsX/cellsY и сетку проходимости!")
-    if not changed and not resized:
+    if prune and missing:
+        print("внимание: расстановки вычеркнутых имён в сохранённых картах "
+              "станут ссылками на несуществующий объект")
+    if not changed and not resized and not (prune and missing):
         print("изменений нет — objects_data.js уже соответствует PNG")
-    if check_only or (not changed and not resized):
+    if check_only or (not changed and not resized and not (prune and missing)):
         return
 
     lines = ["// Автосгенерировано: scripts/cut_objects.py, пересборка из PNG — images/rebuild_registry.py.",
@@ -92,7 +106,8 @@ def main():
     lines.append("  ],\n};")
     with open(REG, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines))
-    print(f"записан {REG} ({os.path.getsize(REG) // 1024} КБ); "
+    print(f"записан {REG} ({os.path.getsize(REG) // 1024} КБ, "
+          f"объектов: {len(items)}); "
           f"перезагрузите редактор (Ctrl+F5, если браузер закэшировал)")
 
 
