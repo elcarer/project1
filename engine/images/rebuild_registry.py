@@ -4,7 +4,7 @@
 Редактор берёт текстуры объектов из data-URL внутри objects_data.js, поэтому
 правки PNG-файлов вручную (Photoshop/Aseprite/…) до пересборки в редакторе не
 видны. Скрипт перечитывает каждый PNG из images/objects/, кодирует его заново
-(WebP lossless — как в scripts/cut_objects.py) и переписывает реестр, сохраняя
+(WebP lossless — как в скриптах вырезки) и переписывает реестр, сохраняя
 метаданные (ru/group/cells/weight/pass) из старого файла. Ничего на диске,
 кроме objects_data.js, не меняет.
 
@@ -96,7 +96,8 @@ def main():
     if check_only or (not changed and not resized and not (prune and missing)):
         return
 
-    lines = ["// Автосгенерировано: scripts/cut_objects.py, пересборка из PNG — images/rebuild_registry.py.",
+    lines = ["// Автосгенерировано скриптами вырезки (scripts/cut_sheet7.py, append-only),",
+             "// пересборка из PNG — images/rebuild_registry.py.",
              "// Не править вручную: после правок PNG запускайте rebuild_registry.py.",
              "window.DUALGRID_OBJECTS = {",
              f"  tileSize: {tileSize}, densityDefault: {densityDefault},",
