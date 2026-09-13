@@ -600,7 +600,10 @@ function drawOverlay() {
         if (!l.visible) return;
         const blockers = [];
         for (let k = 0; k < i; k++) {
-            if (state.layers[k].visible && state.layers[k].name !== l.name) blockers.push(state.layers[k].data);
+            // привязанный слой (l.on) — легальное соседство: стык с ним рисует
+            // собственный тайлсет верхнего слоя, подсветка «вплотную» не нужна
+            if (state.layers[k].visible && state.layers[k].name !== l.name && state.layers[k].name !== l.on)
+                blockers.push(state.layers[k].data);
         }
         if (!blockers.length) return;
         let blocked = null;
