@@ -1251,7 +1251,9 @@ async function openPngFiles(files) {
                 rebuildRoot(); refreshAll(); selfTest();
                 msg(`тайлсет «${name}» обновлён`);
             } else {
-                addLayer(name);
+                // слой поверх существующих по умолчанию наслаивается (как вода):
+                // иначе его непрозрачный фон накрывает все нижние слои
+                addLayer(name, state.layers.length ? { hideBackground: true } : {});
             }
         } catch (err) { msg(`«${name}»: ${err.message}`); }
     }
