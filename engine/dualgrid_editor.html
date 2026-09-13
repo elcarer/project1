@@ -254,6 +254,10 @@
             </label>
             <div class="small muted">0% — крупные материки, 100% — мелкие островки; применяется кнопкой «🎲 Сгенерировать» (зазор — тоже: верхний слой отодвигается от нижних с другим тайлсетом)</div>
             <label style="margin-top:8px"><input id="chkHideBg" type="checkbox"> скрывать фон (наслаивание)</label>
+            <label>поверх фич слоя: <select id="selOnLayer">
+                <option value="">— нет —</option>
+            </select></label>
+            <div class="small muted" id="onHint" style="display:none">фичи слоя растут только внутри фич выбранного нижнего слоя (с полем 1 клетку) — снегу на земле, не на траве</div>
             <label>вне карты: <select id="selOutside">
                 <option value="0">0 — фон</option>
                 <option value="1">1 — фича</option>
@@ -788,7 +792,7 @@ function refreshLayersPanel() {
         name.textContent = l.name;
         const params = document.createElement("span");
         params.className = "lparams";
-        params.textContent = `${l.frequency}% / р${l.scatter}${l.margin ? " / з" + l.margin : ""}${l.hideBackground ? " · bg✕" : ""}`;
+        params.textContent = `${l.frequency}% / р${l.scatter}${l.margin ? " / з" + l.margin : ""}${l.hideBackground ? " · bg✕" : ""}${l.on ? " · ⤷" + l.on.replace(/\.png$/, "") : ""}`;
         li.append(eye, name, params);
         li.onclick = () => { state.active = i; refreshAll(); };
         ul.appendChild(li);
@@ -802,7 +806,15 @@ function refreshLayerProps() {
         $("selOutside").disabled = $("btnFillLayer").disabled = $("btnClearLayer").disabled =
         $("btnInvertLayer").disabled = $("btnLayerDel").disabled = $("btnLayerUp").disabled =
         $("btnLayerDown").disabled = $("btnGenerate").disabled = !l;
-    if (!l) return;
+    $("selOnLayer").disabled = !l;
+    if (!l) { $("selOnLayer").innerHTML = "<option value=\"\">— нет —</option>"; return; }
+    // привязка возможна только к нижним слоям с другим тайлсетом
+    const idx = state.layers.indexOf(l);
+    const below = state.layers.slice(0, idx).filter((b) => b.name !== l.name);
+    $("selOnLayer").innerHTML = "<option value=\"\">— нет —</option>" +
+        below.map((b) => `<option value="${b.name}">${b.name.replace(/\.png$/, "")}</option>`).join("");
+    $("selOnLayer").value = l.on || "";
+    $("onHint").style.display = l.on ? "block" : "none";
     $("rngFreq").value = l.frequency;
     $("freqVal").textContent = l.frequency + "%";
     $("rngScatter").value = l.scatter;
@@ -990,6 +1002,7 @@ function addLayer(name, props = {}, withUndo = true) {
     const l = {
         name, texture: textures[name],
         frequency: 30, scatter: 50, margin: 3, outside: 0, hideBackground: false, visible: true,
+        on: null,
         layout: detectLayoutSafe(name),
         data: new Uint8Array(state.w * state.h),
         ...props,
@@ -1041,6 +1054,7 @@ function manifestObject(embed = false) {
         layers: state.layers.map((l) => ({
             texture: l.name, frequency: l.frequency, scatter: l.scatter, margin: l.margin,
             outside: l.outside, hideBackground: l.hideBackground, layout: l.layout,
+            ...(l.on ? { on: l.on } : {}),
             ...(embed && images[l.name] ? { png: imageToDataURL(images[l.name]) } : {}),
         })),
         ...(objItems.length ? { objects: objectsManifestSpec(embed) } : {}),
@@ -1163,6 +1177,7 @@ async function applyManifest(obj) {
                 name: baseName(ml.texture), texture: tex,
                 frequency: ml.frequency ?? 30, scatter: ml.scatter ?? 50, margin: ml.margin ?? 3,
                 outside: ml.outside ?? 0, hideBackground: !!ml.hideBackground,
+                on: ml.on || null,
                 visible: true, layout: ml.layout || dual.TILE_CORNERS,
                 data: new Uint8Array(state.w * state.h),
             });
@@ -1644,6 +1659,14 @@ $("selOutside").onchange = (e) => {
     l.outside = Number(e.target.value);
     dual.update(l.container, mapOf(l), { outside: l.outside, layout: l.layout });
     selfTest();
+};
+$("selOnLayer").onchange = (e) => {
+    const l = activeLayer(); if (!l) return;
+    pushUndo();
+    l.on = e.target.value || null;
+    $("onHint").style.display = l.on ? "block" : "none";
+    refreshLayersPanel();
+    msg(l.on ? `слой привязан к «${l.on}» — нажмите «🎲 Сгенерировать»` : "привязка снята — нажмите «🎲 Сгенерировать»");
 };
 $("btnFillLayer").onclick = () => { const l = activeLayer(); if (!l) return; pushUndo(); l.data.fill(1); syncLayers([l]); };
 $("btnClearLayer").onclick = () => { const l = activeLayer(); if (!l) return; pushUndo(); l.data.fill(0); syncLayers([l]); };

@@ -381,6 +381,27 @@ function createDualGrid() {
         return cur;
     }
 
+    // Сжать маску на 1 клетку (Чебышёв): остаются клетки, все 8 соседей которых в
+    // маске. За границей карты — 0, так что клетки у края всегда вымываются.
+    function erodeMask(data, w, h) {
+        const out = new Uint8Array(w * h);
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                if (!data[y * w + x]) continue;
+                let ok = true;
+                for (let dy = -1; dy <= 1 && ok; dy++) {
+                    for (let dx = -1; dx <= 1 && ok; dx++) {
+                        const nx = x + dx, ny = y + dy;
+                        const v = (nx >= 0 && ny >= 0 && nx < w && ny < h) ? data[ny * w + nx] : 0;
+                        if (!v) ok = false;
+                    }
+                }
+                if (ok) out[y * w + x] = 1;
+            }
+        }
+        return out;
+    }
+
     // Раздвижка слоёв: стереть в data ячейки ближе margin клеток до «фич» блокеров.
     // У тайлсетов разных местностей нет общего перехода — стык рисуется прямым
     // срезом спрайтов, поэтому между ними остаётся полоса фона (травы) ≥ margin.
@@ -628,6 +649,7 @@ function createDualGrid() {
                 };
                 if (l.layout) o.layout = l.layout;
                 if (l.png) o.png = l.png;
+                if (l.on) o.on = l.on;
                 return o;
             }),
         };
@@ -738,23 +760,43 @@ function createDualGrid() {
         for (const l of manifest.layers) {
             const seedLayer = `${manifest.seed ?? 1}:${i}:${l.texture ?? i}`;
             const margin = clampMargin(l.margin ?? 3);
+            // Привязка «on»: фичи слоя разрешены только внутри фич указанного нижнего
+            // слоя (с отступом 1 клетку внутрь — чтобы переходные тайлы слоя лежали
+            // на его собственном фоне, а не на чужом). К привязанному слою зазор не
+            // применяется — переходы между ними рисует его собственный тайлсет.
+            let confine = null, confineCells = 0;
+            if (l.on) {
+                const hit = lowerMasks.find(([tex]) => tex === l.on);
+                if (hit) {
+                    confine = erodeMask(hit[1], w, h);
+                    for (let k = 0; k < confine.length; k++) confineCells += confine[k];
+                }
+            }
             // Зазор до нижних слоёв с ДРУГИМ тайлсетом: у них нет общего перехода,
-            // стык «фича в фичу» рисуется прямыми срезами спрайтов
-            const blockers = lowerMasks.filter(([tex]) => tex !== (l.texture ?? i)).map(([, mask]) => mask);
+            // стык «фича в фичу» рисуется прямыми срезами спрайтов. Привязанный слой
+            // (l.on) из блокеров исключён — его фон общий со слоем по определению.
+            const blockers = lowerMasks
+                .filter(([tex]) => tex !== (l.texture ?? i) && tex !== l.on)
+                .map(([, mask]) => mask);
             const target = clampPercent(l.frequency) / 100;
 
             // Частота выдерживается ПОСЛЕ раздвижки: если зазор съел часть слоя,
             // поднимаем входную частоту и перегенерируем (детерминированно, тот же сид).
             // got монотонно растёт с freq → сходимость; при 100% берём максимум возможного.
+            // При привязке доля считается по клеткам разрешённой зоны, а не всей карты.
             let freq = clampPercent(l.frequency ?? 30);
             let map = null;
             for (let attempt = 0; attempt < 10; attempt++) {
                 const raw = generateMap({ w, h, seed: seedLayer, frequency: freq, scatter: l.scatter });
-                map = { w, h, data: separateLayer(raw.data, blockers, margin, w, h) };
+                let data = raw.data;
+                if (confine) {
+                    for (let k = 0; k < data.length; k++) data[k] &= confine[k];
+                }
+                map = { w, h, data: separateLayer(data, blockers, margin, w, h) };
                 let got = 0;
                 for (let k = 0; k < map.data.length; k++) got += map.data[k];
-                got /= w * h;
-                if (!blockers.length || got >= target * 0.92 || freq >= 100 || target === 0) break;
+                got /= confine ? Math.max(confineCells, 1) : w * h;
+                if ((!blockers.length && !confine) || got >= target * 0.92 || freq >= 100 || target === 0) break;
                 freq = clampPercent(Math.min(100, Math.ceil(freq * Math.min(3, target / Math.max(got, 0.005)) + 2)));
             }
 
