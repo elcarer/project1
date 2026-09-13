@@ -887,7 +887,8 @@ function createDualGrid() {
             const k = y * w + x;
             if (snow && snow[k]) return "snow";
             if (sand && sand[k]) return "desert";
-            if (snowZone && snowZone[k] > 0.5) return "snow";
+            // холодные/жаркие бесснежные клетки — не «снежный/пустынный» биом:
+            // снежные спрайты нарисованы под снежные тайлы и вне их не смотрятся
             if (sandZone && sandZone[k] > 0.5) return "desert";
             return "grass";
         };
@@ -1053,6 +1054,21 @@ function createDualGrid() {
         const gladeRank = rankNormalize(fbmField(w, h, rng, Math.max(6, Math.round(Math.min(w, h) / 16))));
         // Берега: трава в 2 клетках от воды (ивы, камыш), сама вода исключена
         const shore = water ? dilateMask(water, w, h, 2) : null;
+        // Снежные спрайты нарисованы под снежные тайлы поверхности: ставить их
+        // можно только вглубь снега — весь footprint в эрозированной на 1 клетку
+        // маске снега (зазор ≥1 от кромки). Бесснежный холод подходит тайге.
+        const snowDeep = snow ? erodeMask(snow, w, h) : null;
+        const footIn = (t, x, y, mask) => {
+            if (!mask) return false;
+            const fp = objectFootprint(items[t], x, y, ts);
+            if (fp.x0 < 0 || fp.y0 < 0 || fp.x1 >= w || fp.y1 >= h) return false;
+            for (let fy = fp.y0; fy <= fp.y1; fy++) {
+                for (let fx = fp.x0; fx <= fp.x1; fx++) {
+                    if (!mask[fy * w + fx]) return false;
+                }
+            }
+            return true;
+        };
         // Стенд зоны: массив сообществ зависит от климатической фазы клетки
         const vegZoneStands = (k) => snowZone && snowZone[k] > 0.4 ? WORLD_VEG.taiga
             : sandZone && sandZone[k] > 0.45 ? WORLD_VEG.dry : WORLD_VEG.temperate;
@@ -1083,8 +1099,11 @@ function createDualGrid() {
                 const k = y * w + x;
                 if ((water && water[k]) || occupied[k] || clearing[k]) continue;
                 const b = biomeAt(x, y);
-                if (b === "snow") { // снежный биом — своя палитра (как прежде)
-                    if (rng() < 0.055) place(pickFrom(poolSnow), x, y, true);
+                if (b === "snow") { // снежный биом: только вглубь снега, с зазором от кромки
+                    if (rng() < 0.055) {
+                        const t = pickFrom(poolSnow);
+                        if (footIn(t, x, y, snowDeep)) place(t, x, y, true);
+                    }
                     continue;
                 }
                 if (b === "desert") { // пустыня — камни/кости/сухие деревья
