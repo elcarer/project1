@@ -10,3 +10,4 @@ Desktop.ini
 *.log
 /preview/
 /engine/preview/
+__pycache__/
