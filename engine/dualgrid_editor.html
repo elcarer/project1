@@ -274,7 +274,7 @@
             <label class="lbl" title="процент ячеек карты, получающих объект">плотность <span class="val" id="densVal"></span>
                 <input id="rngDensity" type="range" min="0" max="100" value="12">
             </label>
-            <label style="margin-top:8px" title="объекты не ставятся на «фичи» слоёв с включённым «скрывать фон» (обычно вода)"><input id="chkAvoidWater" type="checkbox" checked> не ставить на воду</label>
+            <label style="margin-top:8px" title="объекты не ставятся на «фичи» слоёв с включённым «скрывать фон» (обычно вода) — при генерации и при постановке кистью"><input id="chkAvoidWater" type="checkbox" checked> не ставить на воду</label>
             <div class="btnrow">
                 <button id="btnGenObjects" title="разложить объекты заново (сид общий с полом)">🎲 Объекты</button>
                 <button id="btnClearObjects" title="снять все объекты с карты">🗑 убрать все</button>
@@ -544,9 +544,19 @@ function objClamp(t, i, j) {
     const y = Math.max(it.cellsY - 1, Math.min(j, state.h - 1));
     return { x, y };
 }
+// галка «не ставить на воду»: якорная клетка на «фиче» слоя со «скрывать фон»
+function objWaterRefused(x, y) {
+    if (!state.objects.avoidHideBg) return false;
+    const avoid = avoidMask();
+    return !!(avoid && avoid[y * state.w + x]);
+}
 function objPlaceAt(i, j) {
     if (!objHolder || !inBounds(i, j) || !objItems.length) return false;
     const c = objClamp(state.objSel, i, j);
+    if (objWaterRefused(c.x, c.y)) {
+        msg("вода: объект не ставится (галка «не ставить на воду»)");
+        return false;
+    }
     if (dual.placeObject(objHolder, state.objSel, c.x, c.y)) {
         state.objects.placements.push([state.objSel, c.x, c.y]);
         return true;
@@ -679,6 +689,7 @@ function drawUI() {
                 sp.anchor.set(0.5, 1);
                 sp.alpha = 0.55;
                 sp.position.set((c.x + 0.5) * TS, (c.y + 1) * TS);
+                if (objWaterRefused(c.x, c.y)) sp.tint = 0xff7070; // здесь нельзя — вода
                 uiHolder.addChild(sp);
                 // непроходимые клетки признака — если включена галка «на карте»
                 if (document.getElementById("chkPassOverlay").checked) {
@@ -1403,9 +1414,20 @@ canvas.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
     if (state.paste) { applyPaste(pt.i, pt.j); return; }
     if (state.tab === "objects") {
+        if (state.tool === "eraser") {
+            pushUndo();
+            objEraseAt(pt.i, pt.j);
+            drag = { mode: "obj", li: pt.i, lj: pt.j };
+            return;
+        }
+        // кисть: отказ по воде проверяем ДО pushUndo, чтобы не плодить пустые шаги
+        const c0 = objClamp(state.objSel, pt.i, pt.j);
+        if (objWaterRefused(c0.x, c0.y)) {
+            msg("вода: объект не ставится (галка «не ставить на воду»)");
+            return;
+        }
         pushUndo();
-        if (state.tool === "eraser") objEraseAt(pt.i, pt.j);
-        else objPlaceAt(pt.i, pt.j);
+        objPlaceAt(pt.i, pt.j);
         drag = { mode: "obj", li: pt.i, lj: pt.j };
         return;
     }
