@@ -8,10 +8,10 @@
 метаданные (ru/group/cells/weight/pass) из старого файла. Ничего на диске,
 кроме objects_data.js, не меняет.
 
-Запуск:  python rebuild_registry.py [--check] [--prune]
+Запуск:  python rebuild_registry.py [--check] [--noprune]
          --check — только показать, что изменилось, без записи файла.
-         --prune — вычеркнуть из реестра объекты, чей PNG удалён с диска
-         (без флага такие записи сохраняются со старым data-URL).
+         --noprune — НЕ вычеркивать объекты, чей PNG удалён с диска
+         (по умолчанию такие записи вычёркиваются из реестра).
 """
 import base64
 import io
@@ -52,7 +52,7 @@ def load_registry(path):
 
 def main():
     check_only = "--check" in sys.argv
-    prune = "--prune" in sys.argv
+    prune = "--noprune" not in sys.argv
     tileSize, densityDefault, items = load_registry(REG)
     changed, kept, missing, resized = [], [], [], []
 
