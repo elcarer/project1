@@ -903,20 +903,20 @@ function createDualGrid() {
             }
             return true;
         }
-        function place(t, x, y, soft = false) {
+        function place(t, x, y, soft = false, onWater = false) {
             const fp = objectFootprint(items[t], x, y, ts);
             if (fp.x0 < 0 || fp.y0 < 0 || fp.x1 >= w || fp.y1 >= h) return false;
             if (soft) { // чаща: переплетение крон, заняты только опорные клетки
                 for (const [c, r] of solids[t]) {
                     const k = (fp.y0 + r) * w + fp.x0 + c;
-                    if (occupied[k] || (water && water[k])) return false;
+                    if (occupied[k] || (!onWater && water && water[k])) return false;
                 }
                 for (const [c, r] of solids[t]) occupied[(fp.y0 + r) * w + fp.x0 + c] = 1;
             } else {
                 for (let fy = fp.y0; fy <= fp.y1; fy++) {
                     for (let fx = fp.x0; fx <= fp.x1; fx++) {
                         const k = fy * w + fx;
-                        if (occupied[k] || (water && water[k])) return false;
+                        if (occupied[k] || (!onWater && water && water[k])) return false;
                     }
                 }
                 for (let fy = fp.y0; fy <= fp.y1; fy++) {
@@ -1142,6 +1142,29 @@ function createDualGrid() {
                     else if (bushPool.length) place(pickFrom(bushPool), x, y, true);
                 } else if (edge && bushPool.length) {                 // кусты — в основном на опушке
                     place(pickFrom(bushPool), x, y, true);
+                }
+            }
+        }
+
+        // Проход 3 — вода: понемногу водных объектов (кувшинки, ряска, затопленные
+        // коряги, камыш на воде). Спрайт — декаль со своей водяной основой, весь
+        // footprint обязан лежать на водных тайлах.
+        const poolWater = weighted(items.map((it, i) =>
+            (it.group === "water" && natural(i)) ? i : -1).filter((i) => i >= 0), 1);
+        if (water && poolWater.length) {
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    if (!water[y * w + x] || occupied[y * w + x] || rng() >= 0.02) continue;
+                    const t = pickFrom(poolWater);
+                    const fp = objectFootprint(items[t], x, y, ts);
+                    if (fp.x0 < 0 || fp.y0 < 0 || fp.x1 >= w || fp.y1 >= h) continue;
+                    let ok = true;
+                    for (let fy = fp.y0; fy <= fp.y1 && ok; fy++) {
+                        for (let fx = fp.x0; fx <= fp.x1 && ok; fx++) {
+                            if (!water[fy * w + fx]) ok = false;
+                        }
+                    }
+                    if (ok) place(t, x, y, true, true);
                 }
             }
         }
