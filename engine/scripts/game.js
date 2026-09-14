@@ -70,7 +70,7 @@
     const assets = createAssets();
     const SPRITES_DIR = "./images/sprites/";
 
-    // ===== Экран загрузки: рамка bigBar + золотая линия loadBarLine ============
+    // ===== Экран загрузки + фабрика спрайт-полос (images/ui) ====================
     // Спрайты интерфейса (images/ui): по http живые файлы, на file:// вшитые
     // EMBED.ui. Прогресс загрузки мира тикает через setStage(метка, доля).
     const uiTex = {};
@@ -82,35 +82,43 @@
             ? await assets.textureFromDataURL(EMBED.ui[base])
             : await assets.loadTexture(`./images/ui/${base}.png`);
     }
-    const loader = new PIXI.Container();
-    const barFrame = new PIXI.Sprite(uiTex.bar);
-    // Линия загрузки — отдельная Texture на том же source со СВОИМ кадром:
-    // заполнение = ширина кадра (Graphics-маска в v8 линии не отсекает — ловушка;
-    // у текстур из PIXI.Assets в локальном билде нет .clone() — потому new Texture)
-    const barLineTex = new PIXI.Texture({
-        source: uiTex.line.source,
-        frame: new PIXI.Rectangle(0, 0, uiTex.line.width, uiTex.line.height),
-    });
-    const barLine = new PIXI.Sprite(barLineTex);
-    barLine.position.set(46, 20); // внутреннее окно рамки 407×64 → линия 315×24
+    // Спрайт-полоска: рамка + линия-заливка, set(доля) зовёт сцена/загрузка.
+    // Линия — NineSliceSprite: ширина = доля, середина растягивается, скруглённые
+    // торцы не искажаются. (Маски и мутация frame UV-ов в v8 ненадёжны — проверено)
+    const makeSpriteBar = (frameTex, lineTex, linePos, lineSize) => {
+        const root = new PIXI.Container();
+        const frame = new PIXI.Sprite(frameTex);
+        const NS = PIXI.NineSliceSprite;
+        const line = NS
+            ? new NS({ texture: lineTex, left: 14, right: 14, top: 10, bottom: 10, height: lineTex.height })
+            : new PIXI.Sprite(lineTex); // запасной путь: растяжение всей линии
+        line.position.set(linePos[0], linePos[1]);
+        line.scale.y = lineSize[1] / lineTex.height; // линия вписана в окно рамки
+        root.addChild(frame, line);
+        let ratio = 1;
+        const draw = () => { line.width = Math.max(1, lineSize[0] * ratio); };
+        draw();
+        return { root, set(r) { ratio = Math.max(0, Math.min(1, r)); draw(); } };
+    };
+    // Экран загрузки: та же рамка bigBar + золотая линия по центру экрана
+    const loader = makeSpriteBar(uiTex.bar, uiTex.line, [46, 20], [315, 24]);
     const barLabel = new PIXI.Text({
         text: "загрузка…",
         style: { fontFamily: GAME_FONT, fontSize: 24, fill: "#e8d5a0" },
     });
     barLabel.anchor.set(0.5, 0); // метка по центру под рамкой
-    barLabel.position.set(barFrame.width / 2, barFrame.height + 14);
-    loader.addChild(barFrame, barLine, barLabel);
-    loader.position.set(
-        Math.round((app.screen.width - barFrame.width) / 2),
-        Math.round(app.screen.height / 2 - barFrame.height / 2),
+    barLabel.position.set(407 / 2, 64 + 14);
+    loader.root.addChild(barLabel);
+    loader.root.position.set(
+        Math.round((app.screen.width - 407) / 2),
+        Math.round(app.screen.height / 2 - 32),
     );
-    app.stage.addChild(loader);
+    app.stage.addChild(loader.root);
     let loadRatio = 0;
     const setStage = (s, r) => {
         if (typeof r === "number") loadRatio = r;
         barLabel.text = s;
-        barLineTex.frame.width = Math.max(0.001, Math.round(315 * loadRatio));
-        barLineTex.update();
+        loader.set(loadRatio);
     };
 
     // ===== Текстуры тайлсетов =====
@@ -328,34 +336,12 @@
     // ХП (bigBar + красная hpBarLine) и опыта (smallBar + золотая loadBarLine).
     // Обе полосы и строка стоят на ОБЩЕЙ оси симметрии (центр X = W−126):
     // ХП шириной 220, опыт 176 (на 20% короче) центрируются относительно неё.
-    // Заливка — ширина линии под Graphics-маской, set(доля) зовёт сцена.
+    // Фабрика makeSpriteBar — в экране загрузки выше.
     const hudCenterX = app.screen.width - 126;
     const heroLvlLabel = hud.text("heroLvl", "", {
         x: hudCenterX, y: 6, size: 28, color: "#ffffff",
     });
     heroLvlLabel.anchor.set(0.5, 0); // центр строки на оси симметрии
-    const makeSpriteBar = (frameTex, lineTex, linePos, lineSize) => {
-        const root = new PIXI.Container();
-        const frame = new PIXI.Sprite(frameTex);
-        // Линия — отдельная Texture на том же source со СВОИМ кадром: заполнение =
-        // ширина кадра, линия растёт слева направо, левый торец сохраняется
-        const lineTexOwned = new PIXI.Texture({
-            source: lineTex.source,
-            frame: new PIXI.Rectangle(0, 0, lineTex.width, lineTex.height),
-        });
-        const fullW = lineTexOwned.frame.width, fullH = lineTexOwned.frame.height;
-        const line = new PIXI.Sprite(lineTexOwned);
-        line.position.set(linePos[0], linePos[1]);
-        line.scale.set(lineSize[0] / fullW, lineSize[1] / fullH); // вписана в окно рамки
-        root.addChild(frame, line);
-        let ratio = 1;
-        const draw = () => {
-            lineTexOwned.frame.width = Math.max(0.001, Math.round(fullW * ratio));
-            lineTexOwned.update();
-        };
-        draw();
-        return { root, set(r) { ratio = Math.max(0, Math.min(1, r)); draw(); } };
-    };
     // ХП: рамка 407×64 (линия 315×24 на 46,20), сжата до 220px ширины
     const heroHpBar = makeSpriteBar(uiTex.bar, uiTex.hpLine, [46, 20], [315, 24]);
     heroHpBar.root.scale.set(220 / 407);
@@ -660,7 +646,7 @@
         },
     });
     scenes.go("game");
-    loader.destroy({ children: true }); // экран загрузки больше не нужен
+    loader.root.destroy({ children: true }); // экран загрузки больше не нужен
 
     console.log(`[game] мир ${W}×${H} сид ${SEED}: объектов ${gen.placements.length}, POI ${gen.pois.length}; ` +
         `персонаж (сущность ${wolfId}) в (${spawn.x | 0}, ${spawn.y | 0}) + врагов ${enemies.length}; рендерер ${app.renderer.name}`);
