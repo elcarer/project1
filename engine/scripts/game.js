@@ -235,13 +235,19 @@
         ? EMBED.wolf.manifest
         : await (await fetch("./images/sprites/wolf_64.json")).json();
     const FR = manifest.size;
+    // Рамка кадра подрезана на долю пикселя: UV ровно по границам кадров при
+    // дробной фазе кромки спрайта на экране (нечётный канвас, нецелый зум)
+    // захватывает крайнюю строку/столбец соседнего кадра — тёмная линия стоп
+    // «протекает» над головой. 0.05px на зуме ×4 — 0.2 экранных пикселя.
+    const PAD = 0.05;
     const anims = {};
     for (const a of manifest.animations) {
         const frames = [];
         for (let c = 0; c < a.frames; c++) {
             frames.push(new PIXI.Texture({
                 source: sheetTex.source,
-                frame: new PIXI.Rectangle(c * FR, a.row * FR, FR, FR),
+                frame: new PIXI.Rectangle(
+                    c * FR + PAD, a.row * FR + PAD, FR - 2 * PAD, FR - 2 * PAD),
             }));
         }
         anims[a.name] = frames;
