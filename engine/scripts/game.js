@@ -321,11 +321,14 @@
     });
     // HUD героя (правый верхний угол, поверх мира): строка уровня + спрайт-полосы
     // ХП (bigBar + красная hpBarLine) и опыта (smallBar + золотая loadBarLine).
+    // Обе полосы и строка стоят на ОБЩЕЙ оси симметрии (центр X = W−126):
+    // ХП шириной 220, опыт 176 (на 20% короче) центрируются относительно неё.
     // Заливка — ширина линии под Graphics-маской, set(доля) зовёт сцена.
+    const hudCenterX = app.screen.width - 126;
     const heroLvlLabel = hud.text("heroLvl", "", {
-        x: app.screen.width - 16, y: 6, size: 28, color: "#ffffff",
+        x: hudCenterX, y: 6, size: 28, color: "#ffffff",
     });
-    heroLvlLabel.anchor.set(1, 0); // правый край строки = правый край полос
+    heroLvlLabel.anchor.set(0.5, 0); // центр строки на оси симметрии
     const makeSpriteBar = (frameTex, lineTex, linePos, lineSize) => {
         const root = new PIXI.Container();
         const frame = new PIXI.Sprite(frameTex);
@@ -345,12 +348,12 @@
     // ХП: рамка 407×64 (линия 315×24 на 46,20), сжата до 220px ширины
     const heroHpBar = makeSpriteBar(uiTex.bar, uiTex.hpLine, [46, 20], [315, 24]);
     heroHpBar.root.scale.set(220 / 407);
-    heroHpBar.root.position.set(app.screen.width - 16 - 220, 44);
-    // Опыт: узкая рамка 220×14, золотая линия ужата во внутреннее окно (5,3) 210×8;
-    // полоса на 20% короче ХП-полосы (масштаб 0.8) и выровнена с ней по правому краю
+    heroHpBar.root.position.set(hudCenterX - 110, 44);
+    // Опыт: узкая рамка 220×14 → 176px (scale 0.8), центр = центр ХП-полосы
     const heroXpBar = makeSpriteBar(uiTex.xpFrame, uiTex.line, [5, 3], [210, 8]);
     heroXpBar.root.scale.set(0.8);
-    heroXpBar.root.position.set(app.screen.width - 192, 83);
+    heroXpBar.root.position.set(hudCenterX - 88, 83);
+    hud.container.addChild(heroHpBar.root, heroXpBar.root);
     hud.container.addChild(heroHpBar.root, heroXpBar.root);
     // Герой ходит по «рядам ног» объектов: между рядами порядок задают
     // контейнеры, внутри ряда героя каждый кадр пересортировывает его zIndex
