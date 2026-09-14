@@ -16,6 +16,10 @@ python nocache-server.py   # отдаёт Cache-Control: no-cache (рекоме�
 модули из эвристического кэша, не обращаясь к серверу (симптом: правки не применяются).
 Импорты модулей содержат `?v=2` — при «залипании» кэша поднимите версию в импортах.
 
+**Игра (открытый мир + персонаж)** — `http://127.0.0.1:8137/index.html` (порт свой,
+если сервер запущен с другим). Параметры: `index.html?w=500&h=500&seed=7` — размер и
+сид мира; WASD/стрелки/джойстик — движение, Space — атака, P — пауза, колесо — зум.
+
 Исключение — инструменты-редакторы **editor.html** и **dualgrid_editor.html**: их скрипты
 подключены обычными `<script>`-тегами (глобали), поэтому они работают и по двойному клику
 с `file://`, без сервера.
@@ -200,6 +204,7 @@ app.stage
 | hud | `createHUD({app, addSystem})` | `bar(name,{get}) — автообновление, text(name,str), setText` |
 | scenes | `createScenes({addSystem})` | `add(name,{enter,exit,update}), go(name), is(name), current` |
 | dualgrid | глобаль `createDualGrid()` (script-тег или import) | `build/update/tileIndex/detectLayout`, `generateMap({w,h,seed,frequency,scatter})`, `makeManifest/makeMap`, `mapFromManifest/mapFromJSON(json, textures)→Promise`, объекты: `generateObjects/buildObjects/syncObjects/placeObject/eraseObjectAt/objectAt/objectFootprint` |
+| character | `createCharacterInput({target})`, `createCharacterSystem({world, ECS, COMPONENTS, DATA, blocked, input, addSystem})` | `spawn({x,y,sprite,anims,speed,halfW,halfH,fps})→id, update(ticker), play(id,name), playAttack(id), remove(id), facingName(id)` — см. «Контроллер персонажа» |
 | debug | `createDebug({app, addSystem, world, grid, components, layer, overlayPos})` | оверлей; `info[ключ]=значение`; клавиши F3/G/H |
 
 Паттерн подключения (в `game.js`):
@@ -529,6 +534,71 @@ const dungeon = await dual.mapFromJSON(JSON.parse(text), textures);
 worldContainer.addChild(dungeon.root);
 ```
 
+## Контроллер персонажа (modules/character.js, ECS-система)
+
+Персонаж — обычная ECS-сущность, а не самостоятельный объект: позицию и спрайт
+обслуживает ядро, контроллер добавляет только своё.
+
+- **Ядро**: `positionX/positionY + spriteMap` → сущность попадает в `renderable`
+  (renderSystem ставит спрайт на экран и кульит вне вида); `animationSpeed = fps/60`
+  → в `animated` (animationSystem крутит кадры — спрайт создаётся с
+  `autoUpdate=false`, `sprite.update(ticker)` зовёт именно ядро).
+- **Свои компоненты** (через `ECS.registerComponent`): `ctrlSpeed/ctrlHalfW/ctrlHalfH`
+  (Float32), `ctrlFacing/ctrlMove/ctrlLock` (Uint8), `DATA.ctrlAnim` (текущая строка)
+  и `DATA.ctrlAnims` (таблица строк сущности `{wait, walk_front, …}`).
+- **Персонаж НЕ в `movable`**: ядро интегрирует скорость с отскоком от границ,
+  а контроллеру нужно скольжение вдоль препятствий — система сама считает
+  перемещение и пишет `positionX/positionY`.
+
+### Фабрики
+
+```js
+const input = createCharacterInput({ target = window });   // WASD/стрелки + джойстик
+const chars = createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, input, addSystem? });
+const id = chars.spawn({ x, y, sprite, anims, speed = 140, halfW = 7, halfH = 5, fps = 8 });
+chars.update(ticker);      // каждый кадр игровой сцены (на паузе не зовётся — стоит)
+chars.playAttack(id);      // attack_* в сторону взгляда (однократная)
+chars.play(id, "death");   // любая однократная строка; по завершении авто-возврат
+```
+
+- `blocked(px, py)` — колбэк игры: «точка мира непроходима» (клетки объектов из
+  `buildCollisionMap`, вода, край карты).
+- `speed` — пикселей в СЕКУНДУ: система, как камера, живёт от `deltaMS` — скорость
+  одинакова на 60 и 144 Гц.
+- Ввод — общее устройство локальной игры (клавиатура + левый стик/крестовина,
+  мёртвая зона 0.4); состояние персонажа живёт только в его компонентах.
+
+### Поведение
+
+- **Диагональ** = два соседних направления, скорость нормирована (не быстрее
+  прямой). Диагональных анимаций нет — играет строка ПОСЛЕДНЕГО нажатого ещё
+  удерживаемого направления (стек нажатий; взгляд сохраняется и в покое).
+- **Скольжение вдоль препятствий**: оси двигаются НЕЗАВИСИМО — идёшь вправо,
+  упёрся в стену, нажал вверх — едешь вдоль неё (и обогнёшь угол стены).
+  Коллизия — AABB «ног» (halfW×halfH, по умолчанию 7×5 — меньше тайла 32px);
+  по оси движения проверяется ТОЛЬКО переднее ребро (3 точки): остановка
+  вплотную и чистое скольжение. Круг с диагональными пробами не годится:
+  останавливает «не доезжая» до стены и навсегда цепляет угол клетки —
+  персонаж застревал у карманов намертво.
+- **Анимации**: walk_front/back/left/right — движение, wait — покой; `play()` —
+  однократные (attack_*, death, damage): `ctrlLock=1`, `sprite.onComplete`
+  снимает блок; движение однократную не перебивает, но персонаж физически едет.
+- **y-сортировка**: спрайт добавляется в контейнер объектов dualgrid
+  (sortableChildren), система пишет `sprite.zIndex = positionY` — персонаж
+  честно заходит «за» стволы и кроны.
+
+### В игре (scripts/game.js + index.html)
+
+`index.html?w=500&h=500&seed=N` (по умолчанию 500×500, случайный сид) — при
+старте генерируется открытый мир теми же функциями, что кнопка «🌍 Сгенерировать
+мир» редактора (`dual.generateWorld` + `generateWorldObjects`, `noManMade: true`),
+и спавнится оборотень `wolf_128` (11 анимаций, 43 кадра, png + JSON-манифест)
+в ближайшей к центру свободной зоне 3×3. Камера следит за компонентами сущности
+(getter-прокси `positionX/Y`). Управление: WASD/стрелки/джойстик — движение,
+Space — атака, колесо — зум, P — пауза. Система персонажей вызывается из update
+сцены game — на паузе замирает. Отладка: `window.__TEST` (`info()` — компоненты
+сущности, `keyDown/keyUp` — синтетические клавиши для автотестов).
+
 ## Производительность (стенд: вкладка 143 Гц, мир 1600×1200, юниты с коллизиями и HP)
 
 Замеры стресс-теста (полигон game.js, популяция наращивается через `window.__TEST.spawnWanderer`):
@@ -706,6 +776,13 @@ window.__TEST    // полигон game.js: счёт, health, camera, scheduler,
   (доминант+спутники+подлесок по биомам: дубравы/берёзняки/ельники/ксерофиты),
   двухпроходная посадка (полог → подрост), градиент чаща/опушка/луг, поляны,
   ивы и камыш у берегов; садово-парковые растения в амбиент не входят.
+- **2026-09-14** — контроллер персонажа: `modules/character.js` — ECS-система
+  (персонаж = сущность positionX/Y+spriteMap+animationSpeed + ctrl-компоненты;
+  ядро ставит спрайт и крутит кадры). Движение со скольжением вдоль препятствий
+  (AABB «ног», проверка переднего ребра по оси), диагональ = анимация последнего
+  нажатого направления, клавиатура + джойстик. `game.js` стал настоящей игрой:
+  генерация мира через функции редактора + оборотень `wolf_128` (старый полигон
+  с шариками удалён).
 
 
 ## Известные ограничения и идеи на будущее

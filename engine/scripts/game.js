@@ -1,252 +1,259 @@
-// ИГРОВАЯ ЛОГИКА / ПОЛИГОН МОДУЛЕЙ
-// Интеграционный тест всех модулей движка: мир больше экрана, управляемый
-// герой под камерой, здоровье и урон по таймеру, события, эффекты, звук, HUD,
-// пауза и отладочный оверлей. Каждый блок помечен, какой модуль проверяет.
-import { UNIT_CONFIGS, UNITS_EVENTS } from "./data/units.js?v=2";
+// ИГРОВАЯ ЛОГИКА — открытый мир (dualgrid) + контроллер персонажа.
+// При старте генерируется карта «открытого мира» теми же функциями, что и в
+// редакторе (dual.generateWorld + dual.generateWorldObjects), поверх неё
+// спавнится оборотень (wolf_128, стандартный набор 11 анимаций) под управлением
+// modules/character.js: стрелки/WASD/джойстик, диагональ играет анимацию
+// последнего нажатого направления, скольжение вдоль непроходимых клеток.
+//
+// Параметры запуска: index.html?w=500&h=500&seed=7 (по умолчанию 500×500,
+// случайный сид — он показывается в оверлее отладки, чтобы мир можно было
+// воспроизвести). Запуск по http (python -m http.server) — ES-модули.
 import { init } from "./engine/engine.js?v=2";
-import { createScheduler } from "./engine/modules/scheduler.js?v=2";
 import { createInput } from "./engine/modules/input.js?v=2";
-import { createHealth } from "./engine/modules/health.js?v=2";
 import { createCamera } from "./engine/modules/camera.js?v=2";
-import { createFX } from "./engine/modules/fx.js?v=2";
-import { createAudio } from "./engine/modules/audio.js?v=2";
-import { createAssets } from "./engine/modules/assets.js?v=2";
+import { createCharacterInput, createCharacterSystem } from "./engine/modules/character.js?v=4";
 import { createHUD } from "./engine/modules/hud.js?v=2";
 import { createScenes } from "./engine/modules/scenes.js?v=2";
 import { createDebug } from "./engine/modules/debug.js?v=2";
-import { rand } from "./engine/modules/math.js?v=2";
+import "./engine/modules/dualgrid.js?v=2"; // dual-mode модуль: даёт глобаль createDualGrid
 
 const engine = await init();
-const {
-    app,
-    worldContainer,
-    world,
-    events,
-    COMPONENTS,
-    DATA,
-    SpatialHashGrid,
-    spawnUnit,
-    spawnAnimatedUnit,
-    createProgrammaticSpritesheet,
-    addSystem,
-    setWorldBounds,
-} = engine;
+const { app, worldContainer, world, ECS, COMPONENTS, DATA, SpatialHashGrid, addSystem } = engine;
+const dual = globalThis.createDualGrid();
+const TS = 32; // размер тайла dualgrid
 
-console.log(`[engine] рендерер: ${app.renderer.name}`); // webgpu или webgl (откат)
-
-// ===== [assets] Загрузка спрайтшита с прогрессом =====
-const assets = createAssets();
-await assets.load(["./images/bullets/all.png"], (p) => console.log(`[assets] прогресс: ${(p * 100) | 0}%`));
-// Пули нарезаем по НАТИВНОМУ размеру кадра арта (32×32), а уполовнивание
-// делаем масштабом спрайта (spriteScale: 0.5) — иначе кадры режутся на четверти
-const bulletTextures = await assets.loadSpritesheet("./images/bullets/all.png", 32, 32);
-console.log(`[assets] кадров нарезано: ${bulletTextures.length}`);
-
-// ===== Текстуры и конфиги (тип 0 — пульсирующий, 1 — пуля, 2 — игрок) =====
-// Размеры объектов уполовнены (радиус 5 вместо 10, кадры 16px вместо 32):
-// в кадре помещается вдвое больше, замеры производительности честнее.
-const rawGraphicsFrames = [];
-for (let i = 0; i < 4; i++) {
-    const graphic = new PIXI.Graphics()
-        .circle(0, 0, i < 3 ? 4 + i : 6.5 - i)
-        .fill("grey")
-    rawGraphicsFrames.push(graphic);
-}
-UNIT_CONFIGS[0].textures = createProgrammaticSpritesheet(rawGraphicsFrames, 16, 16);
-
-UNIT_CONFIGS[1] = {
-    ...UNIT_CONFIGS[0],
-    textures: bulletTextures,
-    baseSpeed: 3,
-    radius: 5,
-    spriteScale: 0.5, // арт 32×32, отображаем в половинном масштабе
-    animationSpeed: 0.2,
+// ===== Параметры запуска: ?w=&h=&seed= =====
+const q = new URLSearchParams(location.search);
+const clampInt = (v, lo, hi, def) => {
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : def;
 };
+const W = clampInt(q.get("w"), 32, 2048, 500);
+const H = clampInt(q.get("h"), 32, 2048, 500);
+const SEED = q.has("seed")
+    ? clampInt(q.get("seed"), 0, 2147483647, 1)
+    : Math.floor(Math.random() * 2147483647);
 
-const greenGraphic = new PIXI.Graphics().circle(0, 0, 6).fill("royalblue").stroke({ width: 2, color: "lightblue" });
-const playerTexture = app.renderer.generateTexture(greenGraphic);
-UNIT_CONFIGS[2] = {
-    name: "Игрок",
-    maxHp: 100,
-    baseSpeed: 4, // используется только для начального разлёта — игроком управляем напрямую
-    radius: 6,
-    color: "royalblue",
-};
-
-// ===== [setWorldBounds] Мир больше экрана — камере есть что показывать =====
-const WORLD = { x: 0, y: 0, width: 1600, height: 1200 };
-setWorldBounds(WORLD);
-
-// ===== Создание модулей =====
-const scheduler = createScheduler();
-// endFrame НЕ регистрируем в addSystem: ввод должен читаться сценой ПОСЛЕ,
-// а сбрасываться в конце её update (см. конец updateGame)
-const input = createInput();
-const health = createHealth();
-const camera = createCamera({ app, container: worldContainer, addSystem });
-const fx = createFX({ app, layer: worldContainer, addSystem });
-const audio = createAudio();
+// ===== HUD: подсказка + статус загрузки =====
 const hud = createHUD({ app });
-const scenes = createScenes({ addSystem });
-const debug = createDebug({ app, addSystem, world, grid: SpatialHashGrid, components: COMPONENTS, layer: worldContainer, overlayPos: { x: 10, y: 86 } });
-// [audio] Контекст браузера можно разблокировать только жестом пользователя
-window.addEventListener("pointerdown", () => audio.unlock());
+hud.text("hint", "WASD/стрелки/джойстик — движение | пробел — атака | колесо — зум | P — пауза", {
+    x: 16, y: 12, size: 12, color: "#88ffcc",
+});
+hud.text("status", "загрузка…", { x: 16, y: 32, size: 14, color: "#ffee66" });
+const setStage = (s) => hud.setText("status", s);
+const frame = () => new Promise((r) => requestAnimationFrame(r)); // дать статусу отрисоваться
 
-// ===== Спавн: игрок + блуждающая популяция =====
-const PLAYER_SPEED = 4;
-const playerId = spawnUnit(2, WORLD.width / 2, WORLD.height / 2, playerTexture);
-health.attach(playerId, UNIT_CONFIGS[2].maxHp);
-const playerSprite = DATA.spriteMap[playerId];
-
-// Блуждающие юниты, все с здоровьем — по ним тестируем урон/смерть/эффекты
-const POPULATION = 60;
-function spawnWanderer() {
-    const isBullet = Math.random() < 0.3;
-    const id = isBullet
-        ? spawnAnimatedUnit(1, rand(50, WORLD.width - 50), rand(50, WORLD.height - 50))
-        : spawnAnimatedUnit(0, rand(50, WORLD.width - 50), rand(50, WORLD.height - 50));
-    health.attach(id, 60);
-    return id;
+// ===== Текстуры тайлсетов =====
+setStage("загрузка тайлсетов…");
+await frame();
+const TILESETS = ["grass_dirt.png", "grass_water.png", "snow_dirt.png", "sand_dirt.png"];
+// Флаги слоёв как в редакторе: база рисует фон, наслагаемые — только фичи
+const HIDE_BG = { "grass_dirt.png": false, "grass_water.png": true, "snow_dirt.png": true, "sand_dirt.png": true };
+const tileTex = {};
+for (const name of TILESETS) {
+    const tex = await PIXI.Assets.load(`./images/tiles/${name}`);
+    tex.source.scaleMode = "nearest"; // пиксельарт без сглаживания
+    tileTex[name] = tex;
 }
-for (let i = 0; i < POPULATION; i++) spawnWanderer();
 
-// ===== [camera] Следование за игроком, границы мира =====
-camera.follow(playerSprite);
-camera.setBounds(WORLD);
-camera.centerOn(WORLD.width / 2, WORLD.height / 2);
+// ===== Реестр объектов (index.html подключает images/objects/objects_data.js) =====
+if (!window.DUALGRID_OBJECTS) throw new Error("objects_data.js не подключён в index.html");
+setStage("загрузка реестра объектов…");
+await frame();
+const registry = window.DUALGRID_OBJECTS.items;
+const baseName = (p) => String(p).split(/[\\/]/).pop();
+const objItems = []; // для buildObjects: { name, texture, pass }
+for (let i = 0; i < registry.length; i++) {
+    const it = registry[i];
+    const img = new Image();
+    await new Promise((res, rej) => {
+        img.onload = res;
+        img.onerror = () => rej(new Error(`битый png в реестре: ${it.name}`));
+        img.src = it.png; // data-URL WebP — работает при любом origin
+    });
+    const tex = PIXI.Texture.from(img);
+    tex.source.scaleMode = "nearest";
+    objItems.push({
+        name: baseName(it.name),
+        texture: tex,
+        pass: (typeof it.pass === "string" && it.pass.length === it.cellsX * it.cellsY) ? it.pass : null,
+    });
+    if (i % 64 === 0) { setStage(`реестр объектов… ${i}/${registry.length}`); await frame(); }
+}
 
-// ===== [events + audio] Пресеты звука =====
-audio.register("hit", () => audio.tone({ freq: 220, endFreq: 110, dur: 0.08, type: "square", volume: 0.15 }));
-audio.register("explosion", () => audio.noise({ dur: 0.45, volume: 0.35, filterFreq: 500 }));
-audio.register("heal", () => audio.tone({ freq: 440, endFreq: 880, dur: 0.15, type: "sine", volume: 0.1 }));
-
-// ===== [events + fx + hud] Реакция на урон и смерть =====
-let score = 0;
-events.on(UNITS_EVENTS.DAMAGED, ({ id, amount }) => {
-    fx.text(COMPONENTS.positionX[id], COMPONENTS.positionY[id] - 14, `-${amount}`, { color: "#ff6666", size: 13 });
-});
-events.on(UNITS_EVENTS.DIED, ({ id }) => {
-    const x = COMPONENTS.positionX[id];
-    const y = COMPONENTS.positionY[id];
-    fx.burst(x, y, { count: 18, color: 0xffaa33, speedMin: 60, speedMax: 220, size: 1.2 });
-    audio.play("explosion");
-    score++;
-    hud.setText("score", `Счёт: ${score}`);
+// ===== ГЕНЕРАЦИЯ МИРА (те же функции, что у кнопки «🌍 Сгенерировать мир») =====
+setStage(`генерация мира ${W}×${H}, сид ${SEED}…`);
+await frame();
+const worldData = dual.generateWorld({ w: W, h: H, seed: SEED });
+const gen = dual.generateWorldObjects({
+    w: W, h: H, seed: SEED,
+    masks: worldData.masks,
+    climate: worldData.climate,
+    noManMade: true, // дикая природа: без деревень и рукотворного амбиента
+    items: registry.map((it, i) => ({
+        name: objItems[i].name, group: it.group || "deco", weight: it.weight ?? 1,
+        cellsX: it.cellsX, cellsY: it.cellsY, pass: objItems[i].pass || undefined,
+    })),
 });
 
-// ===== [hud] Полоска здоровья игрока, счёт, подсказка =====
-hud.bar("playerHp", {
-    x: 16, y: 16, width: 220, height: 14, color: 0x44dd66,
-    get: () => health.ratio(playerId),
-});
-hud.text("score", "Счёт: 0", { x: 16, y: 38, size: 18, color: "#ffffff" });
-hud.text("hint", "WASD/стрелки — движение | колесо — зум | ЛКМ — всплеск | K — урон игроку | P — пауза | F3/G/H — отладка", {
-    x: 16, y: 64, size: 12, color: "#88ffcc",
-});
+// ===== Слои пола (порядок и флаги — как в редакторе) =====
+setStage("сборка слоёв пола…");
+await frame();
+for (const name of TILESETS) {
+    worldContainer.addChild(dual.build({
+        texture: tileTex[name],
+        map: { w: W, h: H, data: worldData.masks[name] },
+        outside: 0,
+        layout: dual.TILE_CORNERS,
+        hideBackground: HIDE_BG[name],
+    }));
+}
 
-// ===== [scheduler + scenes] Волны урона и поддержка популяции =====
-// Таймеры обновляются ТОЛЬКО в update сцены game — на паузе замирают
-const damageTimer = scheduler.every(2, () => {
-    // Бьём случайного живого юнита (не игрока)
-    const wanderers = world.queries.animated.entities;
-    if (wanderers.length === 0) return;
-    const victim = wanderers[Math.floor(Math.random() * wanderers.length)];
-    audio.play("hit");
-    health.damage(victim, 35);
+// ===== Объекты (y-сортировка включена в buildObjects) =====
+setStage(`расстановка объектов (${gen.placements.length})…`);
+await frame();
+const objHolder = dual.buildObjects({ items: objItems, ts: TS, w: W, h: H });
+dual.syncObjects(objHolder, gen.placements);
+worldContainer.addChild(objHolder);
+
+// ===== Коллизии: вода + непроходимые клетки объектов + границы карты =====
+const solid = dual.buildCollisionMap({
+    w: W, h: H, items: objHolder.objectsMeta.items, placements: gen.placements, ts: TS,
 });
-scheduler.every(3, () => {
-    if (world.entities.length < POPULATION + 1) spawnWanderer();
-});
-scheduler.every(1, () => {
-    // Регенерация игрока, чтобы полоска «жила»
-    if (health.get(playerId) > 0 && health.get(playerId) < UNIT_CONFIGS[2].maxHp) {
-        health.heal(playerId, 5);
-        audio.play("heal");
+const waterMask = worldData.masks["grass_water.png"];
+function blocked(px, py) {
+    const gx = Math.floor(px / TS), gy = Math.floor(py / TS);
+    if (gx < 0 || gy < 0 || gx >= W || gy >= H) return true; // за краем карты — стены
+    const k = gy * W + gx;
+    return waterMask[k] === 1 || solid.blocked[k] === 1;
+}
+
+// Спавн: ближайшее к центру кольцо карт, где вся зона 3×3 клеток свободна
+function findSpawn() {
+    const cx = W >> 1, cy = H >> 1;
+    for (let r = 0; r < Math.max(W, H); r++) {
+        for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+                if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue; // перебор кольцом
+                const x = cx + dx, y = cy + dy;
+                let ok = true;
+                for (let oy = -1; oy <= 1 && ok; oy++) {
+                    for (let ox = -1; ox <= 1 && ok; ox++) {
+                        if (blocked((x + ox) * TS + TS / 2, (y + oy) * TS + TS / 2)) ok = false;
+                    }
+                }
+                if (ok) return { x: (x + 0.5) * TS, y: (y + 1) * TS };
+            }
+        }
     }
+    return { x: (cx + 0.5) * TS, y: (cy + 0.5) * TS };
+}
+setStage("спавн персонажа…");
+await frame();
+const spawn = findSpawn();
+
+// ===== Оборотень: лист 5×11 кадров 128×128 + манифест строк =====
+setStage("загрузка персонажа…");
+await frame();
+const sheetTex = await PIXI.Assets.load("./images/sprites/wolf_128.png");
+sheetTex.source.scaleMode = "nearest";
+const manifest = await (await fetch("./images/sprites/wolf_128.json")).json();
+const FR = manifest.size;
+const anims = {};
+for (const a of manifest.animations) {
+    const frames = [];
+    for (let c = 0; c < a.frames; c++) {
+        frames.push(new PIXI.Texture({
+            source: sheetTex.source,
+            frame: new PIXI.Rectangle(c * FR, a.row * FR, FR, FR),
+        }));
+    }
+    anims[a.name] = frames;
+}
+const wolfSprite = new PIXI.AnimatedSprite(anims.wait, false);
+wolfSprite.anchor.set(0.5, 1); // позиция сущности = точка ног
+objHolder.addChild(wolfSprite); // y-сортировка: заходит за стволы и перед ними
+
+// ===== Персонаж — ECS-сущность, контроллер — система (modules/character.js) ==
+// Спрайт ставит на место renderSystem ядра, кадры крутит animationSystem,
+// системе персонажей принадлежит только движение с коллизиями и выбор анимаций.
+const charInput = createCharacterInput(); // WASD/стрелки + джойстик
+const characters = createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, input: charInput });
+const wolfId = characters.spawn({
+    x: spawn.x, y: spawn.y, sprite: wolfSprite, anims,
+    speed: 150, fps: manifest.fps, // коллизия «ног» — по умолчанию 14×10
 });
 
-// ===== Сцены: game и pause =====
+// ===== Модули: ввод, камера-слежение, отладка =====
+const input = createInput(); // endFrame зовёт сцена В КОНЦЕ кадра (см. ниже)
+const camera = createCamera({ app, container: worldContainer, addSystem });
+// Камера следит за КОМПОНЕНТАМИ сущности (живой взгляд на positionX/Y)
+const wolfPos = {
+    get x() { return COMPONENTS.positionX[wolfId]; },
+    get y() { return COMPONENTS.positionY[wolfId]; },
+};
+camera.follow(wolfPos, 8);
+camera.setBounds({ x: 0, y: 0, width: W * TS, height: H * TS });
+camera.setZoom(2);
+camera.centerOn(spawn.x, spawn.y);
+const debug = createDebug({
+    app, addSystem, world, grid: SpatialHashGrid, components: COMPONENTS,
+    layer: worldContainer, overlayPos: { x: 16, y: 32 },
+});
+
+// ===== Сцены: game / pause =====
+const scenes = createScenes({ addSystem });
 scenes.add("game", {
     enter() {
         hud.removeText("pauseLabel");
         debug.info["Сцена"] = "game";
     },
     update(ticker) {
-        // [scheduler] все таймеры крутятся только здесь
-        scheduler.update(ticker.deltaMS);
-
-        // [input + ECS] Игрок: оси с клавиатуры → скорость сущности
-        const axis = input.axis();
-        COMPONENTS.velocityX[playerId] = axis.x * PLAYER_SPEED;
-        COMPONENTS.velocityY[playerId] = axis.y * PLAYER_SPEED;
-
-        // [camera] зум колесом: вверх (deltaY<0) — приближаем, вниз — отдаляем
+        characters.update(ticker); // ввод → коллизии/скольжение → анимация (по компонентам)
+        // Пробел — одиночная атака в сторону взгляда (демо play()/анимаций атаки)
+        if (input.wasPressed("Space")) characters.playAttack(wolfId);
+        // Колесо — зум (вверх — ближе)
         if (input.pointer.wheel !== 0) camera.zoomBy(1 - input.pointer.wheel * 0.1);
-        // [input + audio + fx + camera.screenToWorld] Клик — всплеск частиц в точке мира
-        if (input.pointer.pressed) {
-            const p = camera.screenToWorld(input.pointer.x, input.pointer.y);
-            fx.burst(p.x, p.y, { count: 10, color: 0x66ccff, speedMin: 30, speedMax: 120 });
-            audio.tone({ freq: 880, endFreq: 440, dur: 0.1, type: "triangle", volume: 0.12 });
-        }
-        // [health] K — урон игроку (полоска HUD обновится через get)
-        if (input.wasPressed("KeyK")) {
-            audio.play("hit");
-            health.damage(playerId, 10);
-        }
-        // [scenes] P — пауза
         if (input.wasPressed("KeyP")) scenes.go("pause");
-
-        // [debug] динамические строки оверлея
-        debug.info["Счёт"] = score;
-        debug.info["Юнитов"] = world.entities.length;
-
+        // Оверлей отладки: параметры мира и живое состояние сущности из компонентов
+        debug.info["Сид"] = SEED;
+        debug.info["Карта"] = `${W}×${H}, объектов ${gen.placements.length}, POI ${gen.pois.length}`;
+        debug.info["Позиция"] = `${COMPONENTS.positionX[wolfId] | 0}, ${COMPONENTS.positionY[wolfId] | 0}`;
+        debug.info["Анимация"] = DATA.ctrlAnim[wolfId];
+        debug.info["Взгляд"] = characters.facingName(wolfId);
         input.endFrame(); // сброс однокадровых флагов В КОНЦЕ кадра
     },
 });
-
 scenes.add("pause", {
     enter() {
-        hud.text("pauseLabel", "ПАУЗА", { x: app.screen.width / 2 - 50, y: app.screen.height / 2 - 20, size: 32, color: "#ffee66" });
+        hud.text("pauseLabel", "ПАУЗА", {
+            x: app.screen.width / 2 - 50, y: app.screen.height / 2 - 20,
+            size: 32, color: "#ffee66",
+        });
         debug.info["Сцена"] = "pause";
     },
     update() {
-        // Мир заморожен (scheduler не тикает), но выйти из паузы можно
-        if (input.wasPressed("KeyP")) {
-            scenes.go("game");
-        }
+        if (input.wasPressed("KeyP")) scenes.go("game");
         input.endFrame();
     },
-    exit() {
-        // позиция подписи паузы была по размерам экрана на момент входа — пересоздаётся при входе
-    },
 });
-
 scenes.go("game");
+hud.removeText("status");
+
+console.log(`[game] мир ${W}×${H} сид ${SEED}: объектов ${gen.placements.length}, POI ${gen.pois.length}; ` +
+    `персонаж (сущность ${wolfId}) в (${spawn.x | 0}, ${spawn.y | 0}); рендерер ${app.renderer.name}`);
 
 // ===== Хендл для автотестов из консоли браузера =====
 window.__TEST = {
-    score: () => score,
-    playerId,
-    health,
-    camera,
-    scheduler,
-    fx,
-    audio,
-    input,
-    scenes,
-    assets,
-    spawnWanderer,
-    spawnAnimatedUnit,
-    configs: UNIT_CONFIGS,
-    setWorldBounds,
+    wolfId, characters, camera, input, scenes, blocked,
+    components: COMPONENTS, data: DATA,
+    world: () => ({ w: W, h: H, seed: SEED, objects: gen.placements.length, pois: gen.pois.length }),
+    info: () => ({
+        x: COMPONENTS.positionX[wolfId], y: COMPONENTS.positionY[wolfId],
+        anim: DATA.ctrlAnim[wolfId], facing: characters.facingName(wolfId),
+        moving: !!COMPONENTS.ctrlMove[wolfId],
+    }),
+    keyDown: (code) => window.dispatchEvent(new KeyboardEvent("keydown", { code })),
+    keyUp: (code) => window.dispatchEvent(new KeyboardEvent("keyup", { code })),
     renderer: () => app.renderer.name,
-    unitsAlive: () => world.entities.length,
-    damagePlayer: (n) => health.damage(playerId, n),
-    damageRandom: (n = 35) => {
-        const wanderers = world.queries.animated.entities;
-        if (!wanderers.length) return null;
-        const victim = wanderers[Math.floor(Math.random() * wanderers.length)];
-        health.damage(victim, n);
-        return victim;
-    },
 };
