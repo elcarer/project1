@@ -74,7 +74,10 @@
     // Спрайты интерфейса (images/ui): по http живые файлы, на file:// вшитые
     // EMBED.ui. Прогресс загрузки мира тикает через setStage(метка, доля).
     const uiTex = {};
-    for (const [key, base] of [["bar", "bigBar"], ["line", "loadBarLine"]]) {
+    for (const [key, base] of [
+        ["bar", "bigBar"], ["line", "loadBarLine"],
+        ["hpLine", "hpBarLine"], ["xpFrame", "smallBar"],
+    ]) {
         uiTex[key] = FILE_MODE
             ? await assets.textureFromDataURL(EMBED.ui[base])
             : await assets.loadTexture(`./images/ui/${base}.png`);
@@ -316,14 +319,39 @@
         lvl: HERO_BASE.lvl, prim: HERO_BASE.prim, growth: HERO_BASE.growth,
         weaponMin: HERO_BASE.weaponMin,
     });
-    // HUD героя: уровень/ХП и полоска опыта (правый верхний угол, поверх мира)
-    hud.text("heroLvl", "", { x: app.screen.width - 320, y: 8, size: 28, color: "#ffffff" });
-    const heroHpBar = hud.bar("heroHp", {
-        x: app.screen.width - 320, y: 42, width: 300, height: 12, color: 0xd8382f,
+    // HUD героя (правый верхний угол, поверх мира): строка уровня + спрайт-полосы
+    // ХП (bigBar + красная hpBarLine) и опыта (smallBar + золотая loadBarLine).
+    // Заливка — ширина линии под Graphics-маской, set(доля) зовёт сцена.
+    const heroLvlLabel = hud.text("heroLvl", "", {
+        x: app.screen.width - 16, y: 6, size: 28, color: "#ffffff",
     });
-    const heroXpBar = hud.bar("heroXp", {
-        x: app.screen.width - 320, y: 58, width: 300, height: 5, color: 0xd9b83d,
-    });
+    heroLvlLabel.anchor.set(1, 0); // правый край строки = правый край полос
+    const makeSpriteBar = (frameTex, lineTex, linePos, lineSize) => {
+        const root = new PIXI.Container();
+        const frame = new PIXI.Sprite(frameTex);
+        const line = new PIXI.Sprite(lineTex);
+        line.position.set(linePos[0], linePos[1]);
+        const mask = new PIXI.Graphics();
+        mask.renderable = false; // служит маской заливки
+        line.mask = mask;
+        root.addChild(frame, mask, line);
+        let ratio = 1;
+        const draw = () => mask.clear()
+            .rect(linePos[0], linePos[1], Math.max(0.001, lineSize[0] * ratio), lineSize[1])
+            .fill(0xffffff);
+        draw();
+        return { root, set(r) { ratio = Math.max(0, Math.min(1, r)); draw(); } };
+    };
+    // ХП: рамка 407×64 (линия 315×24 на 46,20), сжата до 220px ширины
+    const heroHpBar = makeSpriteBar(uiTex.bar, uiTex.hpLine, [46, 20], [315, 24]);
+    heroHpBar.root.scale.set(220 / 407);
+    heroHpBar.root.position.set(app.screen.width - 16 - 220, 44);
+    // Опыт: узкая рамка 220×14, золотая линия ужата во внутреннее окно (5,3) 210×8;
+    // полоса на 20% короче ХП-полосы (масштаб 0.8) и выровнена с ней по правому краю
+    const heroXpBar = makeSpriteBar(uiTex.xpFrame, uiTex.line, [5, 3], [210, 8]);
+    heroXpBar.root.scale.set(0.8);
+    heroXpBar.root.position.set(app.screen.width - 192, 83);
+    hud.container.addChild(heroHpBar.root, heroXpBar.root);
     // Герой ходит по «рядам ног» объектов: между рядами порядок задают
     // контейнеры, внутри ряда героя каждый кадр пересортировывает его zIndex
     // (ставит система персонажей). Ряды героя — единственное, что тасуется.
