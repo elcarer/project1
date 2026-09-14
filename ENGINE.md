@@ -216,7 +216,8 @@ app.stage
 | character | `createCharacterInput()`, `createCharacterSystem({world,ECS,COMPONENTS,DATA,blocked,input,addSystem})` | `spawn({x,y,sprite,anims,…})→id, update(ticker), play/playAttack(id), facingName(id)` |
 | tilemap | `createTilemapSystem({world,ECS,DATA,addSystem,container,Sprite,getView,mapW,mapH,ts,margin,tileAt,maxTiles})` | потоковый слой пола: `rebuild(), stats() → {tiles, parked, window}` |
 | dualgrid | глобаль `createDualGrid()` (script-тег или import) | `build/update/tileIndex/detectLayout`, `generateMap({w,h,seed,frequency,scatter})`, `makeManifest/makeMap`, `mapFromManifest/mapFromJSON(json, textures)→Promise`, объекты: `generateObjects/buildObjects/syncObjects/placeObject/eraseObjectAt/objectAt/objectFootprint` |
-| character | `createCharacterInput({target})`, `createCharacterSystem({world, ECS, COMPONENTS, DATA, blocked, input, addSystem})` | `spawn({x,y,sprite,anims,speed,halfW,halfH,fps})→id, update(ticker), play(id,name), playAttack(id), remove(id), facingName(id)` — см. «Контроллер персонажа» |
+| character | `createCharacterInput({target})`, `createCharacterSystem({world, ECS, COMPONENTS, DATA, blocked, blockedAlt, input, addSystem})` | `spawn({x,y,sprite,anims,speed,halfW,halfH,fps})→id, update(ticker), play(id,name), playAttack(id), remove(id), facingName(id)` — см. «Контроллер персонажа» |
+| ai | `createEnemyAI({world, ECS, COMPONENTS, addSystem, characters, blocked, blockedAlt, getPlayerPos})` | FSM патруль→погоня→возврат: `register(id,{detectR,leashR,patrolR}), STATE (состояния врагов), STATE_NAMES` — см. «ИИ врагов» |
 | debug | `createDebug({app, addSystem, world, grid, components, layer, overlayPos})` | оверлей; `info[ключ]=значение`; клавиши F3/G/H |
 
 Паттерн подключения (в `game.js`):
@@ -840,6 +841,42 @@ await E.export("mage_64.png");   // mage_64.png + mage_64.json
 (wait/walk_* циклом, прочие однократно; ставит ctrlLock), `npcRelease(id)`,
 `info(id)` принимает id сущности.
 
+## ИИ врагов (modules/ai.js)
+
+Классическая схема RPG/MMO — FSM из трёх состояний над обычными сущностями
+контроллера персонажей: **ПАТРУЛЬ** (случайные waypoint'ы в круге `patrolR`
+вокруг точки спавна, паузы 1–3 с между ними) → герой вошёл в **aggro-радиус**
+(`detectR`) → **ПОГОНЯ** (скорость ×1.25, в 36px враг останавливается и атакует
+с перезарядкой 1.4 с) → герой пропал из радиуса ×1.6 или враг вытянулся за
+**поводок** `leashR` от дома → **ВОЗВРАТ** (героя не замечает до прихода —
+классический reset) → снова патруль. Источник паттерна — общепринятая практика
+(gamedev.stackexchange: «aggro radius + return home»; FSM-туториалы
+patrol→chase→attack→return).
+
+- **Виртуальный ввод**: ИИ не двигает сущности сам — пишет `ctrlVI/ctrlVJ`
+  (оси −1..1), а движение с коллизиями/скольжением, анимации ходьбы и модель
+  покоя делает контроллер персонажей. Бит `ctrlVI` отличает ИИ-сущность: она не
+  слышит общие клавиши. Взгляд в движении — доминирующая ось вектора.
+- **Битовый бюджет**: маска — Uint32 (32 компонента). В `ai.js` регистрируются
+  только 3 обязательных компонента (`aiState`, `aiHomeX/Y` — хот-данные);
+  радиусы, таймеры, waypoint и перезарядка лежат в обычном массиве `STATE`
+  фабрики (один object-lookup на врага в кадр, без бита).
+- **Пловцы**: компонент `ctrlSwim` + второй предикат проходимости `blockedAlt`
+  (у контроллера И у ИИ): вода проходима, суша — стена. Октопусы патрулируют
+  озеро и «прессуются» к берегу под героем, не выходя из воды.
+- **Расселение** (game.js): 12 деревень (гоблины + шаман-элитка, дворфы,
+  орки + огр-элитка; элитка в центре, 4–6 сородичей кольцом, сайты не ближе
+  45 клеток друг к другу и 20 от спавна героя), 40 лесных (пауки/крысы —
+  проходимые клетки под кронами группы `trees` реестра) и 14 октопусов
+  (внутренние клетки озёр 3×3 воды). Итого ~120 ИИ-сущностей, FPS не проседает.
+- **ЛОВУШКА (выловлена тестом)**: у закуленной сущности animationSystem ядра
+  не крутит кадры → `onComplete` однократной анимации не наступает и
+  `ctrlLock` зависает навсегда (персонаж навечно «застывает» в wait/attack).
+  Поэтому `play()` не запускает однократную у невидимых спрайтов — таймер
+  покоя запустит её, когда сущность появится на экране.
+- В `__TEST`: `enemies` (имя/id/размер), `ai.STATE` (состояния по id),
+  `ai.STATE_NAMES`.
+
 ## Отладка
 
 Глобальные хендлы (после `init()`):
@@ -947,6 +984,13 @@ window.__TEST    // полигон game.js: счёт, health, camera, scheduler,
   своего взгляда (вместо зацикленного wait); после 4 с бездействия wait
   проигрывается ОДИН раз и персонаж возвращается в стоп-кадр (компонент
   `ctrlIdleT`).
+- **2026-09-14** — ИИ врагов: модуль `ai.js` (FSM патруль → погоня → возврат,
+  aggro-радиус/поводок/waypoints) + виртуальный ввод в контроллере
+  (`ctrlVI/ctrlVJ` — ИИ-сущности не слышат общие клавиши) + пловцы
+  (`ctrlSwim` + `blockedAlt`). На тестовой карте: 12 деревень с элитками,
+  лесные пауки/крысы, октопусы в озёрах — ~120 сущностей. Ловушка: у закуленных
+  сущностей однократные анимации не запускаются (кадры не крутятся —
+  `ctrlLock` завис бы навсегда). Подробности — «ИИ врагов».
 
 
 ## Известные ограничения и идеи на будущее

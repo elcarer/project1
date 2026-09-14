@@ -22,6 +22,14 @@
 // createCharacterSystem, createTilemapSystem, createHUD, createScenes,
 // createDebug, DUALGRID_OBJECTS (реестр), EMBEDDED_GAME_ASSETS (только file://).
 (async () => {
+    // Диагностика падений загрузки: страница классическая (без консоли по
+    // двойному клику) — последняя ошибка доступна в window.__bootError
+    window.addEventListener("unhandledrejection", (e) => {
+        window.__bootError = String((e.reason && e.reason.stack) || e.reason);
+    });
+    window.addEventListener("error", (e) => {
+        window.__bootError = `${e.message} @ ${e.filename}:${e.lineno}`;
+    });
     const engine = await init();
     const { app, worldContainer, world, ECS, COMPONENTS, DATA, SpatialHashGrid, addSystem } = engine;
     const dual = globalThis.createDualGrid();
@@ -223,7 +231,13 @@
     // Спрайт ставит на место renderSystem ядра, кадры крутит animationSystem,
     // системе персонажей принадлежит только движение с коллизиями и выбор анимаций.
     const charInput = createCharacterInput(); // WASD/стрелки + джойстик
-    const characters = createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, input: charInput });
+    // Пловцы (ctrlSwim): вода проходима, суша/объекты — стены
+    const blockedSwim = (px, py) => {
+        const gx = Math.floor(px / TS), gy = Math.floor(py / TS);
+        if (gx < 0 || gy < 0 || gx >= W || gy >= H) return true;
+        return waterMask[gy * W + gx] !== 1;
+    };
+    const characters = createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, blockedAlt: blockedSwim, input: charInput });
     const wolfId = characters.spawn({
         x: spawn.x, y: spawn.y, sprite: wolfSprite, anims: wolf.animations,
         speed: 150, fps: wolf.fps,
@@ -310,6 +324,131 @@
     npcRowFollow(); // сразу в правильные ряды — к первому кадру
     addSystem(npcRowFollow);
 
+    // ===== Враги: деревни и дикие (modules/ai.js) ==============================
+    // Гоблины (элитка — шаман), дворфы, орки (элитка — огр) живут деревнями;
+    // в лесах водятся пауки и крысы (под кронами группы "trees"), в глубокой
+    // воде плавают октопусы (ctrlSwim: вода проходима, суша — стена).
+    // Поведение — FSM патруль → погоня → возврат (aggro-радиус, поводок).
+    setStage("расселение врагов…");
+    await frame();
+    const KIND_STATS = {
+        goba:    { speed: 120, detect: 130, leash: 280, patrol: 110 },
+        shaman:  { speed: 110, detect: 175, leash: 330, patrol: 110, elite: true },
+        dwarf:   { speed: 105, detect: 130, leash: 280, patrol: 100 },
+        orc:     { speed: 125, detect: 140, leash: 300, patrol: 110 },
+        ogr:     { speed: 95,  detect: 180, leash: 340, patrol: 100, elite: true },
+        spider:  { speed: 135, detect: 120, leash: 240, patrol: 90 },
+        rat:     { speed: 140, detect: 110, leash: 220, patrol: 80 },
+        octopus: { speed: 100, detect: 110, leash: 200, patrol: 80, swim: true },
+    };
+    const ai = createEnemyAI({
+        world, ECS, COMPONENTS, DATA, addSystem, characters,
+        blocked,
+        blockedAlt: blockedSwim, // пловец: вода проходима, всё остальное — нет
+        getPlayerPos: () => ({ x: COMPONENTS.positionX[wolfId], y: COMPONENTS.positionY[wolfId] }),
+    });
+    const enemies = []; // { name, id, size } — хендл для __TEST
+    function spawnEnemy(kind, x, y) {
+        const ch = enemyKinds[kind], st = KIND_STATS[kind];
+        const sprite = new PIXI.AnimatedSprite(ch.animations.wait, false);
+        sprite.anchor.set(0.5, 1); // позиция сущности = точка ног
+        const id = characters.spawn({
+            x, y, sprite, anims: ch.animations, speed: st.speed, fps: ch.fps,
+            halfW: ch.size / 64 * 3.5, halfH: ch.size / 64 * 2.5,
+        });
+        ECS.addComponent(world, id, "cullPad", ch.size);
+        if (st.swim) ECS.addComponent(world, id, "ctrlSwim", 1);
+        ai.register(id, { detectR: st.detect, leashR: st.leash, patrolR: st.patrol });
+        npcRowTrack.push({ sprite, id }); // ряды ног — общий механизм с NPC
+        enemies.push({ name: kind, id, size: ch.size });
+    }
+    // Листы врагов — один вид грузится один раз (кэш менеджера ассетов)
+    const enemyKinds = {};
+    const ENEMY_SHEETS = ["goba", "shaman", "dwarf", "orc", "ogr", "spider", "rat", "octopus"];
+    for (let i = 0; i < ENEMY_SHEETS.length; i++) {
+        const kind = ENEMY_SHEETS[i];
+        setStage(`расселение врагов… (${kind})`);
+        if (i % 4 === 0) await frame();
+        enemyKinds[kind] = FILE_MODE
+            ? await assets.loadCharacter(`${kind}_64`, EMBED.chars[`${kind}_64`])
+            : await assets.loadCharacter(`${SPRITES_DIR}${kind}_64`);
+    }
+    // ── Маска леса: клетки footprint'ов деревьев + кромка под кронами
+    const forest = new Uint8Array(W * H);
+    for (const [t, x, y] of gen.placements) {
+        if (!registry[t] || registry[t].group !== "trees") continue;
+        for (let fy = y; fy < Math.min(H, y + registry[t].cellsY); fy++) {
+            for (let fx = x; fx < Math.min(W, x + registry[t].cellsX); fx++) {
+                forest[fy * W + fx] = 1;
+            }
+        }
+    }
+    // Пулы точек: лес (проходимая клетка под кроной) и глубокая вода (3×3 воды)
+    const forestSpots = [], waterSpots = [];
+    for (let gy = 1; gy < H - 1; gy++) {
+        for (let gx = 1; gx < W - 1; gx++) {
+            const k = gy * W + gx;
+            const px = (gx + 0.5) * TS, py = (gy + 1) * TS;
+            if (forest[k] && !blocked(px, py)) forestSpots.push([px, py]);
+            let inner = waterMask[k] === 1 && solid.blocked[k] !== 1;
+            for (let oy = -1; oy <= 1 && inner; oy++) {
+                for (let ox = -1; ox <= 1 && inner; ox++) {
+                    if (waterMask[(gy + oy) * W + (gx + ox)] !== 1) inner = false;
+                }
+            }
+            if (inner) waterSpots.push([px, py]);
+        }
+    }
+    const shuffle = (arr) => {
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = (Math.random() * (i + 1)) | 0;
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+    };
+    shuffle(forestSpots);
+    shuffle(waterSpots);
+    // ── Деревни: сайты подальше от спавна героя и друг от друга
+    const spawnTileX = Math.floor(spawn.x / TS), spawnTileY = Math.floor(spawn.y / TS);
+    const VILLAGE_RACES = [
+        { race: "goba", elite: "shaman" }, // элитка — гоблин-шаман
+        { race: "dwarf", elite: null },
+        { race: "orc", elite: "ogr" },     // элитка — огр
+    ];
+    const RING = [[-2, -1], [2, -1], [-2, 1], [2, 1], [0, -2], [0, 2], [-3, 0], [3, 0]];
+    const villageSites = [];
+    for (let guard = 0; guard < 6000 && villageSites.length < 12; guard++) {
+        const gx = 8 + ((Math.random() * (W - 16)) | 0);
+        const gy = 8 + ((Math.random() * (H - 16)) | 0);
+        if (Math.max(Math.abs(gx - spawnTileX), Math.abs(gy - spawnTileY)) < 20) continue;
+        if (!villageSites.every((s) => Math.max(Math.abs(s[0] - gx), Math.abs(s[1] - gy)) >= 45)) continue;
+        if (blocked((gx + 0.5) * TS, (gy + 1) * TS)) continue;
+        villageSites.push([gx, gy]);
+    }
+    villageSites.forEach(([gx, gy], i) => {
+        const { race, elite } = VILLAGE_RACES[i % VILLAGE_RACES.length];
+        const cx = (gx + 0.5) * TS, cy = (gy + 1) * TS;
+        if (elite) {
+            const spot = freeSpotNear(cx, cy);
+            spawnEnemy(elite, spot.x, spot.y); // элитка в центре деревни
+        }
+        const members = 4 + ((Math.random() * 3) | 0);
+        for (let m = 0; m < members; m++) {
+            const [ox, oy] = RING[m % RING.length];
+            const spot = freeSpotNear((gx + ox + 0.5) * TS, (gy + oy + 1) * TS);
+            spawnEnemy(race, spot.x, spot.y);
+        }
+    });
+    // ── Лесные и водные
+    for (let i = 0; i < 40 && forestSpots.length; i++) {
+        const [x, y] = forestSpots[i];
+        spawnEnemy(i % 2 ? "spider" : "rat", x, y);
+    }
+    for (let i = 0; i < 14 && waterSpots.length; i++) {
+        const [x, y] = waterSpots[i];
+        spawnEnemy("octopus", x, y);
+    }
+
     // ===== Модули: ввод, камера-слежение, отладка =====
     const input = createInput(); // endFrame зовёт сцена В КОНЦЕ кадра (см. ниже)
     const camera = createCamera({ app, container: worldContainer, addSystem });
@@ -395,7 +534,7 @@
     hud.removeText("status");
 
     console.log(`[game] мир ${W}×${H} сид ${SEED}: объектов ${gen.placements.length}, POI ${gen.pois.length}; ` +
-        `персонаж (сущность ${wolfId}) в (${spawn.x | 0}, ${spawn.y | 0}) + NPC ${npcs.length}; рендерер ${app.renderer.name}`);
+        `персонаж (сущность ${wolfId}) в (${spawn.x | 0}, ${spawn.y | 0}) + NPC ${npcs.length} + врагов ${enemies.length}; рендерер ${app.renderer.name}`);
 
     // ===== Хендл для автотестов из консоли браузера =====
     // Превью строки анимаций NPC: wait/walk_* крутятся в цикле, остальное
@@ -417,7 +556,7 @@
     }
     window.__TEST = {
         wolfId, characters, camera, input, scenes, blocked, tiles, tilesHolder, bake: cornerTex,
-        components: COMPONENTS, data: DATA, npcs, npcPreview, npcRelease,
+        components: COMPONENTS, data: DATA, npcs, npcPreview, npcRelease, enemies, ai,
         world: () => ({ w: W, h: H, seed: SEED, objects: gen.placements.length, pois: gen.pois.length }),
         info: (id = wolfId) => ({
             x: COMPONENTS.positionX[id], y: COMPONENTS.positionY[id],

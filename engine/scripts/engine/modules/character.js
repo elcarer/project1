@@ -149,7 +149,7 @@ function createCharacterInput({ target = window } = {}) {
 // ── СИСТЕМА ПЕРСОНАЖЕЙ ──────────────────────────────────────────────────────
 // blocked(px, py) => true — точка мира (пиксели) непроходима: клетки объектов,
 // вода, границы карты. Скорость в ПИКСЕЛЯХ В СЕКУНДУ (как у камеры — от deltaMS).
-function createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, input, addSystem = null }) {
+function createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, blockedAlt = null, input, addSystem = null }) {
     if (!blocked || !input) throw new Error("createCharacterSystem: нужны blocked и input");
     // Ограничение значения диапазоном (локально — см. памятку про <script> выше)
     const clamp = (value, min, max) => (value < min ? min : (value > max ? max : value));
@@ -161,6 +161,11 @@ function createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, input, a
     ECS.registerComponent("ctrlMove", Uint8Array);
     ECS.registerComponent("ctrlLock", Uint8Array);
     ECS.registerComponent("ctrlIdleT", Float32Array); // сек бездействия (до одиночного wait)
+    // Виртуальный ввод ИИ: сущности с битом ctrlVI движутся по ctrlVI/ctrlVJ,
+    // а не по общему устройству ввода (пишет модуль ИИ, modules/ai.js)
+    ECS.registerComponent("ctrlVI", Float32Array);
+    ECS.registerComponent("ctrlVJ", Float32Array);
+    ECS.registerComponent("ctrlSwim", Uint8Array);    // 1 = «плавает»: своя проходимость (blockedAlt)
     ECS.registerComponent("ctrlAnim", Array);  // DATA: имя текущей строки анимаций
     ECS.registerComponent("ctrlAnims", Array); // DATA: { wait, walk_front, … } сущности
     // Персонаж = позиция + спрайт + параметры движения (без velocityX/Y: ядро
@@ -173,13 +178,18 @@ function createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, input, a
     // вплотную к препятствию и при зажатой второй оси свободно скользит вдоль
     // стены. (Круг с диагональными пробами здесь не годится: он останавливает
     // персонажа «не доезжая» до стены, и его край навсегда цепляет угол клетки.)
-    function edgeBlockedX(nx, cy, dirX, hw, hh) {
-        const lead = nx + (dirX > 0 ? hw : -hw);
-        return blocked(lead, cy - hh) || blocked(lead, cy) || blocked(lead, cy + hh);
+    // Проверки рёбер учитывают «плавников»: сущность с ctrlSwim проверяет
+    // blockedAlt (вода проходима, суша — стена), остальные — общий blocked
+    function isSolid(id, x, y) {
+        return (COMPONENTS.ctrlSwim[id] && blockedAlt) ? blockedAlt(x, y) : blocked(x, y);
     }
-    function edgeBlockedY(cx, ny, dirY, hw, hh) {
+    function edgeBlockedX(id, nx, cy, dirX, hw, hh) {
+        const lead = nx + (dirX > 0 ? hw : -hw);
+        return isSolid(id, lead, cy - hh) || isSolid(id, lead, cy) || isSolid(id, lead, cy + hh);
+    }
+    function edgeBlockedY(id, cx, ny, dirY, hw, hh) {
         const lead = ny + (dirY > 0 ? hh : -hh);
-        return blocked(cx - hw, lead) || blocked(cx, lead) || blocked(cx + hw, lead);
+        return isSolid(id, cx - hw, lead) || isSolid(id, cx, lead) || isSolid(id, cx + hw, lead);
     }
 
     // ── ФАБРИКА ПЕРСОНАЖА ───────────────────────────────────────────────────
@@ -244,12 +254,16 @@ function createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, input, a
     // Однократная (attack_*, death, damage): прокручивается до конца, затем
     // система сама вернётся к walk/wait. Пока идёт — движение анимацию не
     // перебивает (персонаж при этом физически двигаться может).
+    // ВАЖНО: у закуленной сущности animationSystem не крутит кадры — onComplete
+    // не наступит и ctrlLock зависнет. Поэтому вне экрана однократную НЕ играем:
+    // игрок всё равно её не видит, а таймер покоя запустит её снова при появлении.
     function play(id, name) {
         const frames = DATA.ctrlAnims[id] && DATA.ctrlAnims[id][name];
         if (!frames) return false;
+        const sprite = DATA.spriteMap[id];
+        if (sprite && !sprite.visible) return false;
         DATA.ctrlAnim[id] = name;
         COMPONENTS.ctrlLock[id] = 1;
-        const sprite = DATA.spriteMap[id];
         sprite.textures = frames;
         sprite.loop = false;
         sprite.gotoAndPlay(0);
@@ -261,17 +275,28 @@ function createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, input, a
     function facingName(id) { return DIRS[COMPONENTS.ctrlFacing[id]] ?? "down"; }
 
     // ── КАДР СИСТЕМЫ: ввод → перемещение с коллизиями → анимация ───────────
-    // Ввод — общее устройство на всех персонажей локальной игры; состояние
-    // каждого персонажа живёт в его компонентах.
+    // Ввод — общее устройство на всех персонажей локальной игры; сущности
+    // с виртуальным вводом (биты ctrlVI/ctrlVJ — их пишет модуль ИИ) движутся
+    // по СВОИМ осям и не слышат общие клавиши. Взгляд: в движении — доминирующая
+    // ось вектора, в покое ИИ-сущность хранит последний, игрок — стек нажатий.
     function update(ticker) {
         input.poll();
         const dt = clamp((ticker && ticker.deltaMS) || 1000 / 60, 0, 50) / 1000;
-        const ix = input.ix, iy = input.iy;
-        const moving = ix !== 0 || iy !== 0;
-        const face = input.dir;
+        const gIx = input.ix, gIy = input.iy;
         const entities = world.queries.characters.entities;
         for (let k = entities.length - 1; k >= 0; k--) {
             const id = entities[k];
+            const aiDriven = (world.masks[id] & (COMPONENT_MASKS.ctrlVI | COMPONENT_MASKS.ctrlVJ)) !== 0;
+            const ix = aiDriven ? COMPONENTS.ctrlVI[id] : gIx;
+            const iy = aiDriven ? COMPONENTS.ctrlVJ[id] : gIy;
+            const moving = ix !== 0 || iy !== 0;
+            let face;
+            if (moving) {
+                face = Math.abs(ix) >= Math.abs(iy) ? (ix > 0 ? "right" : "left")
+                                                    : (iy > 0 ? "down" : "up");
+            } else {
+                face = aiDriven ? facingName(id) : input.dir;
+            }
             if (moving) {
                 // СКОЛЬЖЕНИЕ: оси пробуются независимо. Упёрлись в стену по X —
                 // Y всё равно тащит персонажа вдоль препятствия (и наоборот).
@@ -279,8 +304,8 @@ function createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, input, a
                 const step = COMPONENTS.ctrlSpeed[id] * dt * norm;
                 const hw = COMPONENTS.ctrlHalfW[id], hh = COMPONENTS.ctrlHalfH[id];
                 const px = COMPONENTS.positionX[id], py = COMPONENTS.positionY[id];
-                if (ix !== 0) { const tx = px + ix * step; if (!edgeBlockedX(tx, py, ix, hw, hh)) COMPONENTS.positionX[id] = tx; }
-                if (iy !== 0) { const ty = py + iy * step; if (!edgeBlockedY(px, ty, iy, hw, hh)) COMPONENTS.positionY[id] = ty; }
+                if (ix !== 0) { const tx = px + ix * step; if (!edgeBlockedX(id, tx, py, ix, hw, hh)) COMPONENTS.positionX[id] = tx; }
+                if (iy !== 0) { const ty = py + iy * step; if (!edgeBlockedY(id, px, ty, iy, hw, hh)) COMPONENTS.positionY[id] = ty; }
             }
             COMPONENTS.ctrlMove[id] = moving ? 1 : 0;
             COMPONENTS.ctrlFacing[id] = DIR_INDEX[face] ?? 1;
