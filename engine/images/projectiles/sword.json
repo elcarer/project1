@@ -1,0 +1,27 @@
+{
+  "size": 48,
+  "columns": 4,
+  "fps": 8,
+  "animations": [
+    {
+      "name": "front",
+      "row": 0,
+      "frames": 4
+    },
+    {
+      "name": "back",
+      "row": 1,
+      "frames": 4
+    },
+    {
+      "name": "left",
+      "row": 2,
+      "frames": 4
+    },
+    {
+      "name": "right",
+      "row": 3,
+      "frames": 4
+    }
+  ]
+}

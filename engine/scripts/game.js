@@ -238,12 +238,21 @@
         return waterMask[gy * W + gx] !== 1;
     };
     const characters = createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, blockedAlt: blockedSwim, input: charInput });
+    // Снаряды: типы из data/attacks.js (грузятся ниже, перед боевой сценой);
+    // привязка персонажей к атакам — сразу после спавна каждого
+    const projectiles = createProjectiles({
+        world, ECS, COMPONENTS, DATA, addSystem, assets, rows, TS,
+    });
+    await projectiles.load(Object.keys(ATTACK_CONFIGS), {
+        fileMode: FILE_MODE, embed: EMBED.proj,
+    });
     const wolfId = characters.spawn({
         x: spawn.x, y: spawn.y, sprite: wolfSprite, anims: wolf.animations,
         speed: 150, fps: wolf.fps,
         halfW: 3.5, halfH: 2.5, // «ноги» — вдвое уже тайла (спрайт 64px)
     });
     ECS.addComponent(world, wolfId, "cullPad", wolf.size); // герой выше «ног» на весь кадр (64px)
+    projectiles.bind(wolfId, "wolf");
     // Герой ходит по «рядам ног» объектов: между рядами порядок задают
     // контейнеры, внутри ряда героя каждый кадр пересортировывает его zIndex
     // (ставит система персонажей). Ряды героя — единственное, что тасуется.
@@ -308,6 +317,7 @@
         });
         ECS.addComponent(world, id, "cullPad", ch.size); // NPC выше «ног» на весь кадр
         npcRowTrack.push({ sprite: npcSprite, id });
+        projectiles.bind(id, base.replace(/_\d+$/, "")); // NPC витрины тоже атакуют снарядами
         npcs.push({ name: base, id, size: ch.size });
     }
     // Ряды ног NPC — как у героя: контейнеры рядов держат порядок между рядами
@@ -360,6 +370,7 @@
         if (st.swim) ECS.addComponent(world, id, "ctrlSwim", 1);
         ai.register(id, { detectR: st.detect, leashR: st.leash, patrolR: st.patrol });
         npcRowTrack.push({ sprite, id }); // ряды ног — общий механизм с NPC
+        projectiles.bind(id, kind);
         enemies.push({ name: kind, id, size: ch.size });
     }
     // Листы врагов — один вид грузится один раз (кэш менеджера ассетов)
@@ -556,7 +567,7 @@
     }
     window.__TEST = {
         wolfId, characters, camera, input, scenes, blocked, tiles, tilesHolder, bake: cornerTex,
-        components: COMPONENTS, data: DATA, npcs, npcPreview, npcRelease, enemies, ai,
+        components: COMPONENTS, data: DATA, npcs, npcPreview, npcRelease, enemies, ai, projectiles,
         world: () => ({ w: W, h: H, seed: SEED, objects: gen.placements.length, pois: gen.pois.length }),
         info: (id = wolfId) => ({
             x: COMPONENTS.positionX[id], y: COMPONENTS.positionY[id],

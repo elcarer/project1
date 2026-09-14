@@ -26,27 +26,28 @@ TILES = ["grass_dirt.png", "grass_water.png", "snow_dirt.png", "sand_dirt.png"]
 WOLF_PNG = os.path.join(ENGINE, "images", "sprites", "wolf_64.png")
 WOLF_JSON = os.path.join(ENGINE, "images", "sprites", "wolf_64.json")
 SPRITES_DIR = os.path.join(ENGINE, "images", "sprites")
+PROJECTILES_DIR = os.path.join(ENGINE, "images", "projectiles")
 
 
-def collect_chars():
-    """Все персонажи images/sprites (пары <база>.png + <база>.json), кроме волка —
+def collect_sheets(directory):
+    """Все листы папки (пары <база>.png + <база>.json), кроме wolf_64 —
     он живёт в отдельном поле wolf для обратной совместимости."""
-    chars = {}
-    for fn in sorted(os.listdir(SPRITES_DIR)):
+    sheets = {}
+    for fn in sorted(os.listdir(directory)):
         if not fn.endswith(".png"):
             continue
         base = fn[:-4]
         if base == "wolf_64":
             continue
-        json_path = os.path.join(SPRITES_DIR, base + ".json")
+        json_path = os.path.join(directory, base + ".json")
         if not os.path.isfile(json_path):
             continue
         with open(json_path, encoding="utf-8") as fh:
-            chars[base] = {
-                "png": webp_data_url(os.path.join(SPRITES_DIR, fn)),
+            sheets[base] = {
+                "png": webp_data_url(os.path.join(directory, fn)),
                 "manifest": json.load(fh),
             }
-    return chars
+    return sheets
 
 
 def png_data_url(path):
@@ -68,7 +69,8 @@ def build_embedded_js():
     wolf_png = webp_data_url(WOLF_PNG)
     with open(WOLF_JSON, encoding="utf-8") as fh:
         wolf_manifest = json.load(fh)
-    chars = collect_chars()
+    chars = collect_sheets(SPRITES_DIR)
+    proj = collect_sheets(PROJECTILES_DIR)
 
     out = io.StringIO()
     out.write("// СГЕНЕРИРОВАНО scripts/make_embedded_assets.py — вручную не править.\n")
@@ -84,6 +86,13 @@ def build_embedded_js():
     out.write("    },\n")
     out.write("    chars: {\n")
     for base, ch in chars.items():
+        out.write(f'        "{base}": {{\n')
+        out.write(f'            png: "{ch["png"]}",\n')
+        out.write("            manifest: " + json.dumps(ch["manifest"], ensure_ascii=False) + ",\n")
+        out.write("        },\n")
+    out.write("    },\n")
+    out.write("    proj: {\n")
+    for base, ch in proj.items():
         out.write(f'        "{base}": {{\n')
         out.write(f'            png: "{ch["png"]}",\n')
         out.write("            manifest: " + json.dumps(ch["manifest"], ensure_ascii=False) + ",\n")

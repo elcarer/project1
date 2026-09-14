@@ -1,0 +1,12 @@
+{
+  "size": 32,
+  "columns": 4,
+  "fps": 8,
+  "animations": [
+    {
+      "name": "all",
+      "row": 0,
+      "frames": 4
+    }
+  ]
+}
