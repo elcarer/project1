@@ -1,0 +1,57 @@
+{
+  "size": 64,
+  "columns": 5,
+  "fps": 8,
+  "animations": [
+    {
+      "name": "wait",
+      "row": 0,
+      "frames": 1
+    },
+    {
+      "name": "walk_front",
+      "row": 1,
+      "frames": 4
+    },
+    {
+      "name": "walk_back",
+      "row": 2,
+      "frames": 4
+    },
+    {
+      "name": "walk_left",
+      "row": 3,
+      "frames": 4
+    },
+    {
+      "name": "walk_right",
+      "row": 4,
+      "frames": 4
+    },
+    {
+      "name": "attack_front",
+      "row": 5,
+      "frames": 4
+    },
+    {
+      "name": "attack_back",
+      "row": 6,
+      "frames": 4
+    },
+    {
+      "name": "attack_right",
+      "row": 7,
+      "frames": 4
+    },
+    {
+      "name": "attack_left",
+      "row": 8,
+      "frames": 4
+    },
+    {
+      "name": "death",
+      "row": 9,
+      "frames": 4
+    }
+  ]
+}

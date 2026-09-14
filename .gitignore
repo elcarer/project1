@@ -11,3 +11,6 @@ Desktop.ini
 /preview/
 /engine/preview/
 __pycache__/
+
+# Временные артефакты проверок (контакт-листы и т.п.)
+/tmp/

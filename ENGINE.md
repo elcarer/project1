@@ -31,7 +31,7 @@ python nocache-server.py 8791 # порт можно передать аргум�
 `python images/rebuild_registry.py` (сухой прогон — `--check`). Он проверяет все
 запечённые места и обновляет только изменившиеся: реестр объектов
 (`images/objects/objects_data.js`), вшитые ассеты игры для file://
-(`scripts/embedded_assets.js` — тайлсеты + wolf_64) и вшитые тайлсеты редактора
+(`scripts/embedded_assets.js` — тайлсеты + wolf_64 + 27 персонажей forWork) и вшитые тайлсеты редактора
 карт (`EMBEDDED_TILESETS` в `dualgrid_editor.html`).
 
 ## Структура файлов
@@ -72,7 +72,7 @@ engine/
             ├── camera.js       # следование, зум, тряска, границы мира, screenToWorld
             ├── fx.js           # частицы burst() и всплывающий text() через пул
             ├── audio.js        # Web Audio: синтез tone/noise, пресеты, unlock по жесту
-            ├── assets.js       # загрузка с прогрессом и кэшем; loadCharacter — персонажи редактора
+            ├── assets.js       # загрузка с кэшем и nearest; нарезка кадров с PAD; loadCharacter (в т.ч. вшитый режим)
             ├── hud.js          # полоски (с авто-get) и тексты поверх мира, вне камеры
             ├── scenes.js       # конечный автомат состояний: add/go/is, хуки enter/exit/update
             ├── dualgrid.js     # генерация пола по тайловым картам: Dual Grid System, 4×4 тайла
@@ -210,7 +210,7 @@ app.stage
 | camera | `createCamera({app, container, addSystem})` | `follow(obj), setBounds, zoomBy, shake(power,dur), screenToWorld` |
 | fx | `createFX({app, layer, addSystem})` | `burst(x,y,opts), text(x,y,str,opts)` — всё через пул |
 | audio | `createAudio()` | `unlock()` по жесту, `tone({...}), noise({...}), register(name,fn), play(name)` |
-| assets | `createAssets()` | `load(urls, onProgress), loadSpritesheet(url,fw,fh), get(url)` |
+| assets | `createAssets()` | `load(urls, onProgress), loadTexture(url), loadSpritesheet(url,fw,fh), loadCharacter(base,{manifest,png}), textureFromDataURL(src), get(url), cache` — нарезка кадров с PAD-подрезкой UV |
 | hud | `createHUD({app, addSystem})` | `bar(name,{get}) — автообновление, text(name,str), setText` |
 | scenes | `createScenes({addSystem})` | `add(name,{enter,exit,update}), go(name), is(name), current` |
 | character | `createCharacterInput()`, `createCharacterSystem({world,ECS,COMPONENTS,DATA,blocked,input,addSystem})` | `spawn({x,y,sprite,anims,…})→id, update(ticker), play/playAttack(id), facingName(id)` |
@@ -733,10 +733,13 @@ columns, **fps**, animations[{name,row,frames}]). Скорость проигр�
 проверен round-trip: открыть → экспорт → открыть — пиксели совпадают.
 Манифест обязателен: PNG без него не открывается.
 
-Загрузка в игре — один вызов хелпера модуля assets (кэширует и PNG, и манифест):
+Загрузка в игре — один вызов хелпера модуля assets (кэширует и PNG, и манифест;
+на file:// — мимо fetch: манифест объектом, png data-URL):
 
 ```js
-const mage = await assets.loadCharacter("images/sprites/mage_64.png");
+const assets = createAssets();
+const mage = await assets.loadCharacter("images/sprites/mage_64");      // по http
+const wolf = await assets.loadCharacter("wolf_64", EMBED.wolf);         // на file://
 // mage.animations.wait / mage.animations.death — массивы текстур AnimatedSprite;
 // переключение анимации: sprite.textures = mage.animations.death; sprite.gotoAndPlay(0);
 // для проигрывания один раз: sprite.loop = false (смерть застывает на последнем кадре)
@@ -802,6 +805,34 @@ await E.export("mage_64.png");   // mage_64.png + mage_64.json
 тела и позы). Запуск: `new Function('E', src + ';return run;')(E)` после
 `E.resize(128)`; весь рисунок внутри `E.silent(() => { … })` — примитивы не
 перерисовывают доску на каждый вызов.
+
+## Персонажи из forWork: пакер сырых полос (scripts/pack_characters.py)
+
+Сырые заготовки лежат в `forWork/<enemy|hero>/<имя>/{move,attack,others}/*.png` —
+по одной ГОРИЗОНТАЛЬНОЙ ПОЛОСЕ на анимацию, 4 кадра в полосе, спрайты стоят на
+нижней кромке. `python scripts/pack_characters.py` склеивает их в листы 5×11
+формата волка: `images/sprites/<имя>_<клетка>.png` + `.json` (fps 8). Размер
+клетки: 64 (контент ≤64 — центр по X, низ с зазором 2px), 128 для кадров
+128×128 (копия как есть). Папка `abil` у героев не входит (не стандартный набор).
+
+- Контакт-листы всех персонажей (сетка, подписи, шахматный фон) пишутся в
+  `tmp/forwork_preview/` — обязательная визуальная проверка каждого кадра.
+- У rat нет `wait`, у spider/spiderRed нет `wait` и `damage`: wait синтезируется
+  из кадра 0 `move/front` (1 кадр), damage просто отсутствует в манифесте
+  (`play()` вернёт false). Строка в листе при этом остаётся пустой — формат 5×11
+  у всех одинаковый.
+- Пограничный контроль: полосы режутся по границам 4 колонок; колонки разрезов
+  с плотной непрозрачностью печатаются предупреждением (возможный разрез по
+  спрайту) — финальный арбитр всё равно контакт-лист.
+
+**NPC тестовой сцены** (`game.js`): все 27 листов (23 врага + 4 героя) грузятся
+модулем assets (`EMBED.chars` на file://), каждый NPC — полноценная сущность
+контроллера персонажей. Ввод общий, поэтому строй из 9 колонок × 3 ряда ходит и
+атакует (пробел) вместе с героем — витрина всех анимаций за один проход.
+Коробка «ног» и cullPad масштабируются размером клетки (`size/64` от волчьих
+3.5×2.5). В `__TEST`: `npcs` (имя/id/размер), `npcPreview(id, строка)`
+(wait/walk_* циклом, прочие однократно; ставит ctrlLock), `npcRelease(id)`,
+`info(id)` принимает id сущности.
 
 ## Отладка
 
@@ -896,9 +927,15 @@ window.__TEST    // полигон game.js: счёт, health, camera, scheduler,
   (воспроизводилась только в окне с нечётной шириной/высотой и на максимальном
   зуме): UV кадров атласа были ровно по границам, и при дробной фазе кромки
   спрайта на экране GPU захватывал нижнюю тёмную строку стоп кадра строкой
-  выше. Фикс — подрезка рамок кадров на 0.05 px внутрь (PAD в game.js).
-  На полный экран не воспроизводилось: чётные размеры канваса держат кромки
-  на целых пикселях.
+  выше. Фикс — подрезка рамок кадров на 0.05 px внутрь (PAD). На полный экран
+  не воспроизводилось: чётные размеры канваса держат кромки на целых пикселях.
+- **2026-09-14** — 27 персонажей из `forWork` (23 врага + 4 героя): пакер
+  `scripts/pack_characters.py` склеивает сырые полосы (4 кадра, 32/48/64/128px)
+  в листы 5×11 формата волка; вся игра переведена на модуль `assets` (PAD теперь
+  в его нарезке, `loadCharacter` принимает вшитый режим — единый путь нарезки);
+  `make_embedded_assets.py` вшивает всех персонажей (`EMBED.chars`); NPC строем
+  на тестовой карте ходят/атакуют вместе с героем (ввод общий). Подробности —
+  «Персонажи из forWork».
 
 
 ## Известные ограничения и идеи на будущее

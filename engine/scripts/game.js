@@ -8,6 +8,9 @@
 // Оборотень (wolf_64, стандартный набор 11 анимаций) управляется
 // modules/character.js: стрелки/WASD/джойстик, диагональ играет анимацию
 // последнего нажатого направления, скольжение вдоль непроходимых клеток.
+// Рядом строем стоят NPC — персонажи из forWork, склеенные в листы формата
+// волка скриптом scripts/pack_characters.py; ввод у всех общий, пробел
+// атакует всеми (тестовая витрина анимаций).
 //
 // Параметры запуска: index.html?w=500&h=500&seed=7 (по умолчанию 500×500,
 // случайный сид — он показывается в оверлее отладки, чтобы мир можно было
@@ -45,25 +48,17 @@
     const setStage = (s) => hud.setText("status", s);
     const frame = () => new Promise((r) => requestAnimationFrame(r)); // дать статусу отрисоваться
 
-    // Texture из data-URL (file://-режим): <img> из data: — чистый origin
-    function textureFromDataURL(src) {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => {
-                const tex = PIXI.Texture.from(img);
-                tex.source.scaleMode = "nearest";
-                resolve(tex);
-            };
-            img.onerror = () => reject(new Error("битый data-URL изображения"));
-            img.src = src;
-        });
-    }
-
     // На file:// картинка с диска — чужой origin: WebGL не грузит её в GPU,
     // а fetch/XHR до файла запрещены. Вшитые копии — только для этого режима.
     const FILE_MODE = location.protocol === "file:";
     const EMBED = globalThis.EMBEDDED_GAME_ASSETS;
     if (FILE_MODE && !EMBED) throw new Error("file://: не подключён scripts/embedded_assets.js");
+
+    // ===== Ассеты: менеджер с кэшем (модуль assets) =============================
+    // Вся загрузка текстур и нарезка листов — через него; путь к листам
+    // персонажей по http, вшитые копии EMBED — для file://
+    const assets = createAssets();
+    const SPRITES_DIR = "./images/sprites/";
 
     // ===== Текстуры тайлсетов =====
     setStage("загрузка тайлсетов…");
@@ -71,11 +66,9 @@
     const TILESETS = ["grass_dirt.png", "grass_water.png", "snow_dirt.png", "sand_dirt.png"];
     const tileTex = {};
     for (const name of TILESETS) {
-        const tex = FILE_MODE
-            ? await textureFromDataURL(EMBED.tiles[name])
-            : await PIXI.Assets.load(`./images/tiles/${name}`);
-        tex.source.scaleMode = "nearest"; // пиксельарт без сглаживания
-        tileTex[name] = tex;
+        tileTex[name] = FILE_MODE
+            ? await assets.textureFromDataURL(EMBED.tiles[name])
+            : await assets.loadTexture(`./images/tiles/${name}`);
     }
 
     // ===== Реестр объектов (index.html подключает images/objects/objects_data.js) =====
@@ -87,14 +80,7 @@
     const objItems = []; // для buildObjects: { name, texture, pass }
     for (let i = 0; i < registry.length; i++) {
         const it = registry[i];
-        const img = new Image();
-        await new Promise((res, rej) => {
-            img.onload = res;
-            img.onerror = () => rej(new Error(`битый png в реестре: ${it.name}`));
-            img.src = it.png; // data-URL WebP — работает при любом origin
-        });
-        const tex = PIXI.Texture.from(img);
-        tex.source.scaleMode = "nearest";
+        const tex = await assets.textureFromDataURL(it.png); // data-URL WebP — при любом origin
         objItems.push({
             name: baseName(it.name),
             texture: tex,
@@ -227,32 +213,10 @@
     // ===== Оборотень: лист 5×11 кадров 64×64 + манифест строк =====
     setStage("загрузка персонажа…");
     await frame();
-    const sheetTex = FILE_MODE
-        ? await textureFromDataURL(EMBED.wolf.png)
-        : await PIXI.Assets.load("./images/sprites/wolf_64.png");
-    sheetTex.source.scaleMode = "nearest";
-    const manifest = FILE_MODE
-        ? EMBED.wolf.manifest
-        : await (await fetch("./images/sprites/wolf_64.json")).json();
-    const FR = manifest.size;
-    // Рамка кадра подрезана на долю пикселя: UV ровно по границам кадров при
-    // дробной фазе кромки спрайта на экране (нечётный канвас, нецелый зум)
-    // захватывает крайнюю строку/столбец соседнего кадра — тёмная линия стоп
-    // «протекает» над головой. 0.05px на зуме ×4 — 0.2 экранных пикселя.
-    const PAD = 0.05;
-    const anims = {};
-    for (const a of manifest.animations) {
-        const frames = [];
-        for (let c = 0; c < a.frames; c++) {
-            frames.push(new PIXI.Texture({
-                source: sheetTex.source,
-                frame: new PIXI.Rectangle(
-                    c * FR + PAD, a.row * FR + PAD, FR - 2 * PAD, FR - 2 * PAD),
-            }));
-        }
-        anims[a.name] = frames;
-    }
-    const wolfSprite = new PIXI.AnimatedSprite(anims.wait, false);
+    const wolf = FILE_MODE
+        ? await assets.loadCharacter("wolf_64", EMBED.wolf)
+        : await assets.loadCharacter(`${SPRITES_DIR}wolf_64`);
+    const wolfSprite = new PIXI.AnimatedSprite(wolf.animations.wait, false);
     wolfSprite.anchor.set(0.5, 1); // позиция сущности = точка ног
 
     // ===== Персонаж — ECS-сущность, контроллер — система (modules/character.js) ==
@@ -261,11 +225,11 @@
     const charInput = createCharacterInput(); // WASD/стрелки + джойстик
     const characters = createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, input: charInput });
     const wolfId = characters.spawn({
-        x: spawn.x, y: spawn.y, sprite: wolfSprite, anims,
-        speed: 150, fps: manifest.fps,
+        x: spawn.x, y: spawn.y, sprite: wolfSprite, anims: wolf.animations,
+        speed: 150, fps: wolf.fps,
         halfW: 3.5, halfH: 2.5, // «ноги» — вдвое уже тайла (спрайт 64px)
     });
-    ECS.addComponent(world, wolfId, "cullPad", FR); // герой выше «ног» на весь кадр (64px)
+    ECS.addComponent(world, wolfId, "cullPad", wolf.size); // герой выше «ног» на весь кадр (64px)
     // Герой ходит по «рядам ног» объектов: между рядами порядок задают
     // контейнеры, внутри ряда героя каждый кадр пересортировывает его zIndex
     // (ставит система персонажей). Ряды героя — единственное, что тасуется.
@@ -279,6 +243,72 @@
     }
     wolfRowFollow(); // сразу в правильный ряд — к первому кадру
     addSystem(wolfRowFollow);
+
+    // ===== NPC тестовой карты: персонажи scripts/pack_characters.py ============
+    // Сырые полосы forWork склеены в листы 5×11 формата волка (стандартный набор
+    // 11 анимаций). Каждый NPC — полноценная сущность контроллера персонажей;
+    // ввод общий, поэтому строй ходит и атакует вместе с героем — за один проход
+    // видно все анимации всех персонажей.
+    setStage("загрузка NPC…");
+    await frame();
+    const NPC_SHEETS = [
+        "bat_64", "cyclop_128", "dark_64", "demon_128", "dwarf_64",
+        "goba_64", "hound_64", "imp_64", "lider_64", "medusa_128",
+        "mummy_64", "octopus_64", "ogr_64", "orc_64", "rat_64",
+        "shaman_64", "spider_64", "spiderboss_64", "spiderman_64", "spiderRed_64",
+        "spike_64", "succubus_64", "vampire_64",
+        "knight_64", "rogue_64", "sorca_64", "valca_64",
+    ];
+    // Свободная точка ног возле (x, y): спот может попасть в воду/объект
+    function freeSpotNear(x, y) {
+        if (!blocked(x, y)) return { x, y };
+        for (let r = 1; r <= 10; r++) {
+            for (let dy = -r; dy <= r; dy++) {
+                for (let dx = -r; dx <= r; dx++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+                    if (!blocked(x + dx * TS, y + dy * TS)) return { x: x + dx * TS, y: y + dy * TS };
+                }
+            }
+        }
+        return { x, y }; // всё вокруг занято — ставим как есть (утонет, но не сломает игру)
+    }
+    const npcs = []; // { name, id, size } — хендл для сцены и __TEST
+    const npcRowTrack = []; // { sprite, id } — переселение между рядами ног
+    for (let i = 0; i < NPC_SHEETS.length; i++) {
+        const base = NPC_SHEETS[i];
+        setStage(`загрузка NPC… ${i + 1}/${NPC_SHEETS.length}`);
+        if (i % 8 === 0) await frame();
+        const ch = FILE_MODE
+            ? await assets.loadCharacter(base, EMBED.chars[base])
+            : await assets.loadCharacter(`${SPRITES_DIR}${base}`);
+        const npcSprite = new PIXI.AnimatedSprite(ch.animations.wait, false);
+        npcSprite.anchor.set(0.5, 1); // позиция сущности = точка ног
+        const COLS = 9, GAP = TS * 3; // строй: 9 в ряду, шаг 3 тайла
+        const spot = freeSpotNear(
+            spawn.x + ((i % COLS) - (COLS - 1) / 2) * GAP,
+            spawn.y + TS * 5 + Math.floor(i / COLS) * GAP);
+        const id = characters.spawn({
+            x: spot.x, y: spot.y, sprite: npcSprite, anims: ch.animations,
+            speed: 120, fps: ch.fps,
+            halfW: ch.size / 64 * 3.5, halfH: ch.size / 64 * 2.5, // коробка «ног» волка, масштабированная кадром
+        });
+        ECS.addComponent(world, id, "cullPad", ch.size); // NPC выше «ног» на весь кадр
+        npcRowTrack.push({ sprite: npcSprite, id });
+        npcs.push({ name: base, id, size: ch.size });
+    }
+    // Ряды ног NPC — как у героя: контейнеры рядов держат порядок между рядами
+    const npcRowCache = npcRowTrack.map(() => -1);
+    function npcRowFollow() {
+        npcRowTrack.forEach(({ sprite, id }, k) => {
+            const r = Math.max(0, Math.min(H, Math.floor(COMPONENTS.positionY[id] / TS)));
+            if (r === npcRowCache[k]) return;
+            if (npcRowCache[k] >= 0) sprite.removeFromParent();
+            rows[r].addChild(sprite);
+            npcRowCache[k] = r;
+        });
+    }
+    npcRowFollow(); // сразу в правильные ряды — к первому кадру
+    addSystem(npcRowFollow);
 
     // ===== Модули: ввод, камера-слежение, отладка =====
     const input = createInput(); // endFrame зовёт сцена В КОНЦЕ кадра (см. ниже)
@@ -325,8 +355,12 @@
         },
         update(ticker) {
             characters.update(ticker); // ввод → коллизии/скольжение → анимация (по компонентам)
-            // Пробел — одиночная атака в сторону взгляда (демо play()/анимаций атаки)
-            if (input.wasPressed("Space")) characters.playAttack(wolfId);
+            // Пробел — одиночная атака в сторону взгляда (демо play()/анимаций
+            // атаки): герой и весь строй NPC
+            if (input.wasPressed("Space")) {
+                characters.playAttack(wolfId);
+                for (const n of npcs) characters.playAttack(n.id);
+            }
             // Колесо — зум (вверх — ближе); отдаление ограничено окном тайлов
             if (input.pointer.wheel !== 0) {
                 camera.zoomBy(1 - input.pointer.wheel * 0.1);
@@ -361,17 +395,34 @@
     hud.removeText("status");
 
     console.log(`[game] мир ${W}×${H} сид ${SEED}: объектов ${gen.placements.length}, POI ${gen.pois.length}; ` +
-        `персонаж (сущность ${wolfId}) в (${spawn.x | 0}, ${spawn.y | 0}); рендерер ${app.renderer.name}`);
+        `персонаж (сущность ${wolfId}) в (${spawn.x | 0}, ${spawn.y | 0}) + NPC ${npcs.length}; рендерер ${app.renderer.name}`);
 
     // ===== Хендл для автотестов из консоли браузера =====
+    // Превью строки анимаций NPC: wait/walk_* крутятся в цикле, остальное
+    // однократно; npcRelease возвращает персонажа под управление системы.
+    function npcPreview(id, name) {
+        const frames = DATA.ctrlAnims[id] && DATA.ctrlAnims[id][name];
+        if (!frames) return false;
+        const sprite = DATA.spriteMap[id];
+        DATA.ctrlAnim[id] = name;
+        COMPONENTS.ctrlLock[id] = 1; // авто-выбор анимации приостановлен
+        sprite.textures = frames;
+        sprite.loop = name === "wait" || name.startsWith("walk_");
+        sprite.gotoAndPlay(0);
+        return true;
+    }
+    function npcRelease(id) {
+        COMPONENTS.ctrlLock[id] = 0;
+        DATA.ctrlAnim[id] = ""; // система сама вернёт walk/wait
+    }
     window.__TEST = {
         wolfId, characters, camera, input, scenes, blocked, tiles, tilesHolder, bake: cornerTex,
-        components: COMPONENTS, data: DATA,
+        components: COMPONENTS, data: DATA, npcs, npcPreview, npcRelease,
         world: () => ({ w: W, h: H, seed: SEED, objects: gen.placements.length, pois: gen.pois.length }),
-        info: () => ({
-            x: COMPONENTS.positionX[wolfId], y: COMPONENTS.positionY[wolfId],
-            anim: DATA.ctrlAnim[wolfId], facing: characters.facingName(wolfId),
-            moving: !!COMPONENTS.ctrlMove[wolfId],
+        info: (id = wolfId) => ({
+            x: COMPONENTS.positionX[id], y: COMPONENTS.positionY[id],
+            anim: DATA.ctrlAnim[id], facing: characters.facingName(id),
+            moving: !!COMPONENTS.ctrlMove[id],
         }),
         keyDown: (code) => window.dispatchEvent(new KeyboardEvent("keydown", { code })),
         keyUp: (code) => window.dispatchEvent(new KeyboardEvent("keyup", { code })),
