@@ -33,6 +33,8 @@
         window.__bootError = `${e.message} @ ${e.filename}:${e.lineno}`;
     });
     const engine = await init();
+    // Игровой шрифт всех надписей — загрузить ДО первых PIXI.Text (hud/fx/debug)
+    await loadGameFont();
     const { app, worldContainer, world, ECS, COMPONENTS, DATA, SpatialHashGrid, addSystem } = engine;
     const dual = globalThis.createDualGrid();
     const TS = 32; // размер тайла dualgrid

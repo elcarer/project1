@@ -14,9 +14,10 @@ function createDebug({ app, addSystem = null, world = null, grid = null, compone
     const info = {}; // игра может дописывать свои строки: info["Счёт"] = score
 
     // Оверлей статистики: обновляем текст 4 раза в секунду, не каждый кадр
+    // (шрифт — игровой, game_font.js; фабрика вызывается после loadGameFont)
     const overlay = new PIXI.Text({
         text: "",
-        style: { fontFamily: "monospace", fontSize: 12, fill: "#00ff88", lineHeight: 16 },
+        style: { fontFamily: globalThis.GAME_FONT || "monospace", fontSize: 12, fill: "#00ff88", lineHeight: 16 },
     });
     overlay.x = overlayPos.x; overlay.y = overlayPos.y;
     overlay.resolution = 2;

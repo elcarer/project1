@@ -44,6 +44,11 @@ function createProjectiles({ world, ECS, COMPONENTS, DATA, addSystem = null,
                 ? await assets.loadCharacter(cfg.sheet, embed[cfg.sheet])
                 : await assets.loadCharacter(dir + cfg.sheet);
             TYPES[attack] = { anims: ch.animations, size: ch.size, fps: cfg.fps || ch.fps || 8 };
+            // Свободный угол полёта — ТОЛЬКО у снарядов с одной анимацией all
+            // (слова пользователя): листы с 4 направлениями летят строго по
+            // вертикали/горизонтали взгляда атакующего
+            const a = ch.animations;
+            TYPES[attack].freeAngle = !!a.all && !a.front && !a.back && !a.left && !a.right;
         }
     }
 
@@ -145,12 +150,14 @@ function createProjectiles({ world, ECS, COMPONENTS, DATA, addSystem = null,
             const lifetime = melee
                 ? t.anims[animName].length / (cfg.fps || 8)
                 : b.lifetime;
-            // Дальнобойный с прицелом летит В ЦЕЛЬ (ai/автоатака передают точку),
-            // анимация остаётся строкой взгляда; без прицела — по оси взгляда
+            // Дальнобойный снаряд с одной анимацией all летит В ЦЕЛЬ под любым
+            // углом (aim от ИИ/автоатаки); снаряды с 4 анимациями — строго по
+            // вертикали/горизонтали взгляда (прицел игнорируют). Анимация в
+            // обоих случаях — строка взгляда
             let vx = melee ? 0 : v[0] * cfg.speed;
             let vy = melee ? 0 : v[1] * cfg.speed;
             const sx = px + v[0] * 12, sy = py - 16 + v[1] * 10;
-            const aim = !melee && getAim ? getAim(id) : null;
+            const aim = !melee && t.freeAngle && getAim ? getAim(id) : null;
             if (aim) {
                 const dx = aim.x - sx, dy = aim.y - sy;
                 const d = Math.hypot(dx, dy) || 1;

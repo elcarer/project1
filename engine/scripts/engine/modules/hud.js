@@ -53,8 +53,8 @@ function createHUD({ app, addSystem = null } = {}) {
     }
 
     // Текстовая метка. Возвращает PIXI.Text — можно менять .text напрямую,
-    // либо через setText(name, str)
-    function text(name, str, { x = 0, y = 0, size = 16, color = "#ffffff", fontFamily = "monospace", align = "left" } = {}) {
+    // либо через setText(name, str). Шрифт по умолчанию — игровой (game_font.js)
+    function text(name, str, { x = 0, y = 0, size = 16, color = "#ffffff", fontFamily = globalThis.GAME_FONT || "monospace", align = "left" } = {}) {
         removeText(name);
         const label = new PIXI.Text({
             text: str,
