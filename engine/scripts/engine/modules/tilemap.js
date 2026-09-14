@@ -88,7 +88,15 @@ function createTilemapSystem({
                 }
                 ECS.addComponent(world, id, "positionX", i * ts);
                 ECS.addComponent(world, id, "positionY", j * ts);
-                DATA.spriteMap[id].texture = texture;
+                const sprite = DATA.spriteMap[id];
+                sprite.texture = texture;
+                // Позиция и видимость на спрайт — СРАЗУ: ядро переносит компоненты
+                // на спрайты в renderSystem, который отрабатывает ДО систем
+                // модулей. Если ждать следующего кадра, одну фазу тайлы
+                // отрисовываются на старом месте (призрачная вода на клетку
+                // выше/ниже при движении) или с погашенной видимостью (дырки).
+                sprite.position.set(i * ts, j * ts);
+                sprite.visible = true;
                 k++;
             }
         }

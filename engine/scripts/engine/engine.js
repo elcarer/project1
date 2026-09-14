@@ -203,6 +203,7 @@ const COMPONENTS = { //Ограничение в 32 компонента!!!
     "animationTime":  ECS.defineComponent(), // Текущий прогресс анимации
     "radius": ECS.defineComponent(), //4 радиус ячейки для коллизий
     "gridCellId": ECS.defineComponent(Int32Array), // Int32, так как -1 будет означать "вне сетки"
+    "cullPad": ECS.defineComponent(), // запас culling в px: на столько спрайт выходит из точки позиции (якорь «ноги»)
 }
 //Компоненты не укладывающиеся в типизированные массивы (спрайты и т.д.)
 const DATA = {
@@ -222,6 +223,7 @@ const COMPONENT_MASKS = {
     "animationTime":  1 << 9,  // 512
     "radius": 1 << 10, // 1024 радиус ячейки для коллизий
     "gridCellId": 1 << 11, // 2048 Хранит индекс текущей ячейки для коллизий
+    "cullPad": 1 << 12, // 4096 запас culling (габарит спрайта вокруг точки позиции)
 }
 //------------Группы entity---------------------------
 // Группа для системы движения (нужны все 4 компонента)
@@ -480,7 +482,13 @@ function renderSystem(app, world, worldContainer) {
             const y = COMPONENTS.positionY[id];
             sprite.x = x;
             sprite.y = y;
-            sprite.visible = x >= left && x <= right && y >= top && y <= bottom;
+            // cullPad — для спрайтов, торчащих из точки позиции (деревья растут
+            // вверх от «ног»): кульм по габариту, иначе крона, заехавшая за край,
+            // исчезала/появлялась разом целым куском при движении камеры
+            const pad = COMPONENTS.cullPad[id];
+            sprite.visible = pad
+                ? x >= left - pad && x <= right + pad && y >= top - pad && y <= bottom + pad
+                : x >= left && x <= right && y >= top && y <= bottom;
         }
     }
 }

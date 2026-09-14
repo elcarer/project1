@@ -182,6 +182,9 @@
         ECS.addComponent(world, id, "positionX", sp.x);
         ECS.addComponent(world, id, "positionY", sp.y);
         ECS.addComponent(world, id, "spriteMap", sp); // → renderable: позиция и culling ядра
+        // Крона выше точки «ног»: ядро кульит по габариту — деревья выплывают
+        // из-за края экрана постепенно, а не возникают целиком
+        ECS.addComponent(world, id, "cullPad", Math.max(sp.texture.height, sp.texture.width / 2));
         if (n % 8192 === 0) { setStage(`ECS-сущности объектов (${n}/${objSprites.length})…`); await frame(); }
     }
 
@@ -255,6 +258,7 @@
         x: spawn.x, y: spawn.y, sprite: wolfSprite, anims,
         speed: 150, fps: manifest.fps, // коллизия «ног» — по умолчанию 14×10
     });
+    ECS.addComponent(world, wolfId, "cullPad", FR); // герой выше «ног» на весь кадр (128px)
     // Герой ходит по «рядам ног» объектов: между рядами порядок задают
     // контейнеры, внутри ряда героя каждый кадр пересортировывает его zIndex
     // (ставит система персонажей). Ряды героя — единственное, что тасуется.
@@ -272,6 +276,11 @@
     // ===== Модули: ввод, камера-слежение, отладка =====
     const input = createInput(); // endFrame зовёт сцена В КОНЦЕ кадра (см. ниже)
     const camera = createCamera({ app, container: worldContainer, addSystem });
+    // Средняя кнопка мыши — вернуть изначальный зум (preventDefault гасит autoscroll)
+    const INITIAL_ZOOM = 2;
+    app.canvas.addEventListener("mousedown", (e) => {
+        if (e.button === 1) { e.preventDefault(); camera.setZoom(INITIAL_ZOOM); }
+    });
     // Камера следит за КОМПОНЕНТАМИ сущности (живой взгляд на positionX/Y)
     const wolfPos = {
         get x() { return COMPONENTS.positionX[wolfId]; },
@@ -279,7 +288,7 @@
     };
     camera.follow(wolfPos, 8);
     camera.setBounds({ x: 0, y: 0, width: W * TS, height: H * TS });
-    camera.setZoom(2);
+    camera.setZoom(INITIAL_ZOOM);
     camera.centerOn(spawn.x, spawn.y);
     // Пол — потоковая ECS-система тайлов: создаётся ПОСЛЕ камеры, чтобы её тик
     // шёл сразу за тиком камеры (окно по свежему виду, без лага в кадр)
@@ -349,7 +358,7 @@
 
     // ===== Хендл для автотестов из консоли браузера =====
     window.__TEST = {
-        wolfId, characters, camera, input, scenes, blocked, tiles,
+        wolfId, characters, camera, input, scenes, blocked, tiles, tilesHolder, bake: cornerTex,
         components: COMPONENTS, data: DATA,
         world: () => ({ w: W, h: H, seed: SEED, objects: gen.placements.length, pois: gen.pois.length }),
         info: () => ({
