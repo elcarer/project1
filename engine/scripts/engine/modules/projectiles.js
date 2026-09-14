@@ -5,22 +5,27 @@
 // взгляда. Снаряд — ECS-сущность (positionX/Y + spriteMap → рендер и culling
 // ядра, animationSpeed → кадры крутит ядро, loop — прокручивается, пока летит).
 // Движение прямолинейное (система пишет positionX/Y), по истечении lifetime
-// снаряд гасится и возвращается в пул своего типа. Коллизии/урон — следующий
-// этап (компоненты уже оставляют место: добавится своя система поверх тех же id).
+// снаряд гасится и возвращается в пул своего типа. Коллизии/урон считает
+// modules/combat.js поверх тех же id: при выпуске снаряд получает СНИМОК
+// боевых данных владельца — фракцию (getFaction) и бросок урона (getAttack),
+// поэтому смерть стрелка в полёте не ломает попадание.
 //
 // Битовый бюджет: НИ ОДНОГО нового компонента — маркеры в обычных массивах
 // BOUND/ACTIVE внутри фабрики.
 //
 // Пример:
 //   const proj = createProjectiles({ world, ECS, COMPONENTS, DATA, addSystem,
-//                                    assets, rows, TS });
+//                                    assets, rows, TS,
+//                                    getFaction: (id) => combat.factionOf(id),
+//                                    getAttack: (id) => combat.rollAttack(id) });
 //   await proj.load(["fireball", "bow"]);       // типы = ключи ATTACK_CONFIGS
 //   proj.bind(wolfId, "wolf");                  // привязка вида персонажа
 //   // ... в бою контроллер играет attack_*, снаряд рождается сам на spawnTick
 const DIR_VECTORS = { front: [0, 1], back: [0, -1], left: [-1, 0], right: [1, 0] };
 
 function createProjectiles({ world, ECS, COMPONENTS, DATA, addSystem = null,
-                             assets, rows = null, TS = 32 }) {
+                             assets, rows = null, TS = 32,
+                             getFaction = null, getAttack = null, getAim = null }) {
     if (!assets) throw new Error("createProjectiles: нужен assets");
     const clamp = (v, lo, hi) => (v < lo ? lo : (v > hi ? hi : v));
     const TYPES = {};   // attack → { anims, size, fps } (загружено load())
@@ -53,8 +58,10 @@ function createProjectiles({ world, ECS, COMPONENTS, DATA, addSystem = null,
     // ── ПОРОЖДЕНИЕ снаряда атакой ──────────────────────────────────────────
     // type — ключ ATTACK_CONFIGS; dir — направление (строка анимации листа);
     // vx/vy — скорость полёта (melee передаёт 0/0 и once: true);
+    // owner/faction/attack — боевые данные (для коллизий combat.js);
     // возвращает id сущности (или null при ошибке).
-    function spawn({ type, dir = "front", x, y, vx, vy, lifetime, once = false }) {
+    function spawn({ type, dir = "front", x, y, vx, vy, lifetime, once = false,
+                     owner = -1, faction = -1, attack = null }) {
         const t = TYPES[type];
         if (!t) return null;
         const animName = t.anims[dir] ? dir : "all";
@@ -73,7 +80,8 @@ function createProjectiles({ world, ECS, COMPONENTS, DATA, addSystem = null,
         ECS.addComponent(world, id, "spriteMap", sprite);
         ECS.addComponent(world, id, "animationSpeed", t.fps / 60);
         ECS.addComponent(world, id, "cullPad", t.size); // не мигать на краю экрана
-        PROJ[id] = { vx, vy, life: lifetime, type, row: -1 };
+        PROJ[id] = { vx, vy, life: lifetime, type, row: -1,
+                     owner, faction, attack, hit: 0 };
         ACTIVE.add(id);
         placeInRow(id, sprite, y);
         return id;
@@ -137,14 +145,30 @@ function createProjectiles({ world, ECS, COMPONENTS, DATA, addSystem = null,
             const lifetime = melee
                 ? t.anims[animName].length / (cfg.fps || 8)
                 : b.lifetime;
+            // Дальнобойный с прицелом летит В ЦЕЛЬ (ai/автоатака передают точку),
+            // анимация остаётся строкой взгляда; без прицела — по оси взгляда
+            let vx = melee ? 0 : v[0] * cfg.speed;
+            let vy = melee ? 0 : v[1] * cfg.speed;
+            const sx = px + v[0] * 12, sy = py - 16 + v[1] * 10;
+            const aim = !melee && getAim ? getAim(id) : null;
+            if (aim) {
+                const dx = aim.x - sx, dy = aim.y - sy;
+                const d = Math.hypot(dx, dy) || 1;
+                vx = dx / d * cfg.speed;
+                vy = dy / d * cfg.speed;
+            }
             spawn({
                 type: b.attack, dir,
-                x: px + v[0] * 12,
-                y: py - 16 + v[1] * 10, // из «груди» персонажа, чуть впереди
-                vx: melee ? 0 : v[0] * cfg.speed,
-                vy: melee ? 0 : v[1] * cfg.speed,
+                x: sx,
+                y: sy, // из «груди» персонажа, чуть впереди
+                vx,
+                vy,
                 lifetime,
                 once: melee,
+                // боевые данные для коллизий/урона (modules/combat.js)
+                owner: id,
+                faction: getFaction ? getFaction(id) : -1,
+                attack: getAttack ? getAttack(id) : null,
             });
         }
 

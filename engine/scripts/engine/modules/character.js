@@ -40,8 +40,12 @@ const DIR_WALK = { up: "walk_back", down: "walk_front", left: "walk_left", right
 const DIR_ATTACK = { up: "attack_back", down: "attack_front", left: "attack_left", right: "attack_right" };
 // Секунд бездействия до одиночного проигрывания wait (потом снова стоп-кадр)
 const IDLE_WAIT_DELAY = 4;
-// Мёртвая зона стика: бюджет дрожи ручки — не путать с нажатием
-const PAD_DEADZONE = 0.4;
+    // Мёртвая зона стика: бюджет дрожи ручки — не путать с нажатием
+    const PAD_DEADZONE = 0.4;
+    // Прицел атаки: id → { x, y } точки мира (заполняет playAttack) — обычный
+    // массив без бита компонента, читает модуль снарядов при выпуске.
+    // Имя с префиксом: верхний лексический уровень у скриптов страницы общий
+    const CTRL_AIM = [];
 const KEY_DIRS = {
     ArrowUp: "up", KeyW: "up",
     ArrowDown: "down", KeyS: "down",
@@ -272,9 +276,14 @@ function createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, blockedA
         sprite.gotoAndPlay(0);
         return true;
     }
-    function playAttack(id) {
+    function playAttack(id, aim = null) {
+        // aim — точка мира для прицела снаряда (ИИ передаёт цель); без неё
+        // снаряд летит по направлению взгляда. Анимация всегда по взгляду.
+        CTRL_AIM[id] = aim;
         return play(id, DIR_ATTACK[DIRS[COMPONENTS.ctrlFacing[id]] ?? "down"]);
     }
+    // Прицел последнего приказа атаки (читает модуль снарядов при выпуске)
+    function getAim(id) { return CTRL_AIM[id] || null; }
     function facingName(id) { return DIRS[COMPONENTS.ctrlFacing[id]] ?? "down"; }
 
     // ── КАДР СИСТЕМЫ: ввод → перемещение с коллизиями → анимация ───────────
@@ -336,7 +345,7 @@ function createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, blockedA
     }
     if (addSystem) addSystem(update);
 
-    return { spawn, remove, update, play, playAttack, facingName };
+    return { spawn, remove, update, play, playAttack, getAim, facingName };
 }
 
 // Подключение двумя способами (файл без import/export валиден и как ES-модуль):

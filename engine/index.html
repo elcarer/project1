@@ -11,6 +11,14 @@
             background-color: #000;
         }
     </style>
+    <!-- Отладка в средах без отрисовки (?raf=timeout): requestAnimationFrame на
+         setTimeout — загрузка и тик игры идут без реальных кадров композитора
+         (автотесты на скрытой/перекрытой панели). В обычном запуске не включается. -->
+    <script>
+        if (new URLSearchParams(location.search).get("raf") === "timeout") {
+            window.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 16);
+        }
+    </script>
     <!-- ЛОКАЛЬНЫЙ PixiJS -->
     <script src="./dll/pixi.min.js"></script>
     <!-- ДВИЖОК в dual-mode (файлы без import/export — глобали): порядок важен.
@@ -18,6 +26,7 @@
          (ассеты для file:// вшиты в scripts/embedded_assets.js). -->
     <script src="./scripts/data/units.js"></script>
     <script src="./scripts/data/attacks.js"></script>
+    <script src="./scripts/data/stats.js"></script>
     <script src="./scripts/engine/eventSystem.js"></script>
     <script src="./scripts/engine/engine.js"></script>
     <script src="./scripts/engine/modules/math.js"></script>
@@ -28,6 +37,7 @@
     <script src="./scripts/engine/modules/character.js"></script>
     <script src="./scripts/engine/modules/ai.js"></script>
     <script src="./scripts/engine/modules/projectiles.js"></script>
+    <script src="./scripts/engine/modules/combat.js"></script>
     <script src="./scripts/engine/modules/tilemap.js"></script>
     <script src="./scripts/engine/modules/health.js"></script>
     <script src="./scripts/engine/modules/fx.js"></script>

@@ -9,8 +9,10 @@
 // modules/character.js: стрелки/WASD/джойстик, диагональ играет анимацию
 // последнего нажатого направления, скольжение вдоль непроходимых клеток.
 // По карте расселены ИИ-враги (деревни гоблинов/дворфов/орков с элитками,
-// пауки и крысы в лесах, октопусы в воде) — modules/ai.js; пробел атакует
-// героя, выпуская снаряд (modules/projectiles.js, data/attacks.js).
+// пауки и крысы в лесах, октопусы в воде) — modules/ai.js. Бой автоматический:
+// герой и враги атакуют, когда противник в зоне достижимости оружия; попадания
+// снарядов разрешает modules/combat.js (уклон/крит/блок, ХП, смерть, опыт,
+// уровни, полоски ХП и всплывающие цифры урона через modules/fx.js).
 //
 // Параметры запуска: index.html?w=500&h=500&seed=7 (по умолчанию 500×500,
 // случайный сид — он показывается в оверлее отладки, чтобы мир можно было
@@ -47,8 +49,8 @@
         ? clampInt(q.get("seed"), 0, 2147483647, 1)
         : Math.floor(Math.random() * 2147483647);
 
-    // ===== HUD: подсказка + статус загрузки =====
-    const hud = createHUD({ app });
+    // ===== HUD: подсказка + статус загрузки (+ полоски героя ниже) =============
+    const hud = createHUD({ app, addSystem }); // addSystem — автообновление bar()-ов
     hud.text("hint", "WASD/стрелки/джойстик — движение | атака автоматическая | колесо — зум | P — пауза", {
         x: 16, y: 12, size: 12, color: "#88ffcc",
     });
@@ -239,12 +241,32 @@
     };
     const characters = createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, blockedAlt: blockedSwim, input: charInput });
     // Снаряды: типы из data/attacks.js (грузятся ниже, перед боевой сценой);
-    // привязка персонажей к атакам — сразу после спавна каждого
+    // привязка персонажей к атакам — сразу после спавна каждого. При выпуске
+    // снаряд получает снимок боевых данных владельца (фракция, бросок урона) —
+    // combat создаётся ниже, поэтому колбэки ссылается на него через let.
+    let combat = null;
     const projectiles = createProjectiles({
         world, ECS, COMPONENTS, DATA, addSystem, assets, rows, TS,
+        getFaction: (id) => (combat ? combat.factionOf(id) : -1),
+        getAttack: (id) => (combat ? combat.rollAttack(id) : null),
+        getAim: (id) => characters.getAim(id), // прицел атаки (modules/character.js)
     });
     await projectiles.load(Object.keys(ATTACK_CONFIGS), {
         fileMode: FILE_MODE, embed: EMBED.proj,
+    });
+    // Эффекты (всплывающие цифры урона) — слой над объектами мира; боевая
+    // система превращает попадания снарядов в урон, смерть, опыт и уровни
+    const fxLayer = new PIXI.Container();
+    worldContainer.addChild(fxLayer); // добавлен последним — рисуется поверх
+    const fx = createFX({ app, layer: fxLayer, addSystem });
+    combat = createCombat({
+        world, ECS, COMPONENTS, DATA, addSystem, characters, projectiles, fx,
+        onRemove(id) { // мёртвый враг уходит из рядов ног и хендлов сцены
+            const k = creatureRowTrack.findIndex((e) => e.id === id);
+            if (k !== -1) { creatureRowTrack.splice(k, 1); creatureRowCache.splice(k, 1); }
+            const e = enemies.findIndex((en) => en.id === id);
+            if (e !== -1) enemies.splice(e, 1);
+        },
     });
     const wolfId = characters.spawn({
         x: spawn.x, y: spawn.y, sprite: wolfSprite, anims: wolf.animations,
@@ -253,6 +275,20 @@
     });
     ECS.addComponent(world, wolfId, "cullPad", wolf.size); // герой выше «ног» на весь кадр (64px)
     projectiles.bind(wolfId, "wolf");
+    // Ролевые статы героя (формулы — data/stats.js, образец countDopStats.js)
+    combat.init(wolfId, {
+        faction: 0, hero: true, size: wolf.size,
+        lvl: HERO_BASE.lvl, prim: HERO_BASE.prim, growth: HERO_BASE.growth,
+        weaponMin: HERO_BASE.weaponMin,
+    });
+    // HUD героя: уровень/ХП и полоска опыта (правый верхний угол, поверх мира)
+    hud.text("heroLvl", "", { x: app.screen.width - 226, y: 12, size: 14, color: "#ffffff" });
+    const heroHpBar = hud.bar("heroHp", {
+        x: app.screen.width - 226, y: 32, width: 210, height: 12, color: 0xd8382f,
+    });
+    const heroXpBar = hud.bar("heroXp", {
+        x: app.screen.width - 226, y: 48, width: 210, height: 5, color: 0xd9b83d,
+    });
     // Герой ходит по «рядам ног» объектов: между рядами порядок задают
     // контейнеры, внутри ряда героя каждый кадр пересортировывает его zIndex
     // (ставит система персонажей). Ряды героя — единственное, что тасуется.
@@ -299,10 +335,13 @@
         rat:     { speed: 140, detect: 110, leash: 220, patrol: 80 },
         octopus: { speed: 100, detect: 110, leash: 200, patrol: 80, swim: true },
     };
-    // «Зона достижимости оружия» (reach из ATTACK_CONFIGS) — дистанция,
-    // на которой враг останавливается и атакует
-    const weaponReach = (kind) =>
-        ATTACK_CONFIGS[CHARACTER_ATTACKS[kind].attack].reach;
+    // «Зона достижимости оружия» (reach из ATTACK_CONFIGS) — дистанция атаки ИИ.
+    // Ближний бой подходит БЛИЖЕ (0.6·reach): эффект оружия бьёт перед взглядом,
+    // на диагональной дистанции reach он не достаёт до цели
+    const weaponAttackR = (kind) => {
+        const cfg = ATTACK_CONFIGS[CHARACTER_ATTACKS[kind].attack];
+        return cfg.kind === "melee" ? cfg.reach * 0.6 : cfg.reach;
+    };
     const ai = createEnemyAI({
         world, ECS, COMPONENTS, DATA, addSystem, characters,
         blocked,
@@ -333,10 +372,21 @@
         });
         ECS.addComponent(world, id, "cullPad", ch.size);
         if (st.swim) ECS.addComponent(world, id, "ctrlSwim", 1);
-        ai.register(id, { detectR: st.detect, leashR: st.leash, patrolR: st.patrol, attackR: weaponReach(kind) });
+        ai.register(id, { detectR: st.detect, leashR: st.leash, patrolR: st.patrol, attackR: weaponAttackR(kind) });
         creatureRowTrack.push({ sprite, id });
         creatureRowCache.push(-1);
         projectiles.bind(id, kind);
+        // Ролевые статы вида (data/stats.js) с лёгкой индивидуальной разброской
+        const es = ENEMY_STATS[kind];
+        const v = (base) => base + ((Math.random() * 2) | 0);
+        combat.init(id, {
+            faction: 1, size: ch.size, lvl: es.lvl,
+            prim: {
+                str: v(es.prim.str), agi: v(es.prim.agi), vit: v(es.prim.vit),
+                spd: v(es.prim.spd), wis: v(es.prim.wis),
+            },
+            weaponMin: es.weaponMin, xpReward: es.xp,
+        });
         enemies.push({ name: kind, id, size: ch.size });
     }
     // Листы врагов — один вид грузится один раз (кэш менеджера ассетов)
@@ -481,11 +531,16 @@
                 const px = COMPONENTS.positionX[wolfId], py = COMPONENTS.positionY[wolfId];
                 const r2 = heroReach * heroReach;
                 for (let i = 0; i < enemies.length; i++) {
-                    const dx = COMPONENTS.positionX[enemies[i].id] - px;
-                    const dy = COMPONENTS.positionY[enemies[i].id] - py;
+                    const en = enemies[i];
+                    if (COMPONENTS.hp[en.id] <= 0) continue; // при смерти не добиваем
+                    const dx = COMPONENTS.positionX[en.id] - px;
+                    const dy = COMPONENTS.positionY[en.id] - py;
                     if (dx * dx + dy * dy <= r2) {
-                        characters.playAttack(wolfId); // снаряд выпустит модуль projectiles
-                        heroAtkCd = 0.9;
+                        // снаряд выпустит модуль projectiles; прицел — в цель,
+                        // чтобы выстрел летел точно во врага с любой диагонали
+                        characters.playAttack(wolfId, { x: COMPONENTS.positionX[en.id], y: COMPONENTS.positionY[en.id] });
+                        // Рефлексы (Скорость/2) сокращают кулдаун основной атаки
+                        heroAtkCd = 0.9 * (1 - combat.dopOf(wolfId).cdrAttack / 100);
                         break;
                     }
                 }
@@ -504,6 +559,13 @@
             debug.info["Взгляд"] = characters.facingName(wolfId);
             debug.info["Тайлов на экране"] = tiles.stats().tiles;
             debug.info["Сущностей ECS"] = world.entities.length;
+            // HUD героя + боевые статы в оверлее отладки
+            const hs = combat.stat(wolfId);
+            hud.setText("heroLvl",
+                `Волк · ур. ${hs.lvl} · ${Math.ceil(COMPONENTS.hp[wolfId])}/${COMPONENTS.maxHp[wolfId]}`);
+            heroHpBar.set(combat.hpRatio(wolfId));
+            heroXpBar.set(combat.xpRatio(wolfId));
+            debug.info["ХП"] = `${Math.ceil(COMPONENTS.hp[wolfId])}/${COMPONENTS.maxHp[wolfId]} · опыт ${hs.xp}/${xpToNext(hs.lvl)}`;
             input.endFrame(); // сброс однокадровых флагов В КОНЦЕ кадра
         },
     });
@@ -529,7 +591,10 @@
     // ===== Хендл для автотестов из консоли браузера =====
     window.__TEST = {
         wolfId, characters, camera, input, scenes, blocked, tiles, tilesHolder, bake: cornerTex,
-        components: COMPONENTS, data: DATA, enemies, ai, projectiles,
+        components: COMPONENTS, data: DATA, enemies, ai, projectiles, combat,
+        heroStat: () => combat.stat(wolfId),
+        heroDop: () => combat.dopOf(wolfId),
+        giveXp: (n) => combat.giveXp(wolfId, n),
         world: () => ({ w: W, h: H, seed: SEED, objects: gen.placements.length, pois: gen.pois.length }),
         info: (id = wolfId) => ({
             x: COMPONENTS.positionX[id], y: COMPONENTS.positionY[id],

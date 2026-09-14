@@ -8,7 +8,7 @@ ECS-движок 2D-игры на **PixiJS 8.19** без сборщика и з�
 **Игра (открытый мир + персонаж)** — открыть `index.html` двойным кликом (работает
 с `file://`) или по адресу `http://127.0.0.1:8137/index.html` на сервере. Параметры:
 `index.html?w=500&h=500&seed=7` — размер и сид мира. Управление: WASD/стрелки/джойстик —
-движение, Space — атака, P — пауза, колесо — зум.
+движение, атака автоматическая (враг в зоне оружия), P — пауза, колесо — зум.
 
 Для разработки удобнее статический HTTP-сервер с запретом кэша:
 
@@ -216,8 +216,9 @@ app.stage
 | character | `createCharacterInput()`, `createCharacterSystem({world,ECS,COMPONENTS,DATA,blocked,input,addSystem})` | `spawn({x,y,sprite,anims,…})→id, update(ticker), play/playAttack(id), facingName(id)` |
 | tilemap | `createTilemapSystem({world,ECS,DATA,addSystem,container,Sprite,getView,mapW,mapH,ts,margin,tileAt,maxTiles})` | потоковый слой пола: `rebuild(), stats() → {tiles, parked, window}` |
 | dualgrid | глобаль `createDualGrid()` (script-тег или import) | `build/update/tileIndex/detectLayout`, `generateMap({w,h,seed,frequency,scatter})`, `makeManifest/makeMap`, `mapFromManifest/mapFromJSON(json, textures)→Promise`, объекты: `generateObjects/buildObjects/syncObjects/placeObject/eraseObjectAt/objectAt/objectFootprint` |
-| character | `createCharacterInput({target})`, `createCharacterSystem({world, ECS, COMPONENTS, DATA, blocked, blockedAlt, input, addSystem})` | `spawn({x,y,sprite,anims,speed,halfW,halfH,fps})→id, update(ticker), play(id,name), playAttack(id), remove(id), facingName(id)` — см. «Контроллер персонажа» |
+| character | `createCharacterInput({target})`, `createCharacterSystem({world, ECS, COMPONENTS, DATA, blocked, blockedAlt, input, addSystem})` | `spawn({x,y,sprite,anims,speed,halfW,halfH,fps})→id, update(ticker), play(id,name), playAttack(id,aim?), getAim(id), remove(id), facingName(id)` — см. «Контроллер персонажа» |
 | ai | `createEnemyAI({world, ECS, COMPONENTS, addSystem, characters, blocked, blockedAlt, getPlayerPos})` | FSM патруль→погоня→возврат: `register(id,{detectR,leashR,patrolR}), STATE (состояния врагов), STATE_NAMES` — см. «ИИ врагов» |
+| combat | `createCombat({world, ECS, COMPONENTS, DATA, addSystem, characters, projectiles, fx, onRemove})` | ХП/урон/опыт/уровни: `init(id,{faction,hero,lvl,prim,growth,weaponMin,xpReward,size}), stat/dopOf/factionOf/alive, hpRatio/xpRatio, rollAttack(id), dealDamage(attacker,target,{base,critPower,melee}), heal, giveXp, revive` — см. «Боевая и ролевая система» |
 | debug | `createDebug({app, addSystem, world, grid, components, layer, overlayPos})` | оверлей; `info[ключ]=значение`; клавиши F3/G/H |
 
 Паттерн подключения (в `game.js`):
@@ -912,6 +913,58 @@ patrol→chase→attack→return).
   читает и `images/projectiles/`).
 - В `__TEST`: `projectiles` (`TYPES/BOUND/PROJ/ACTIVE` — активные снаряды).
 
+## Боевая и ролевая система (modules/combat.js + data/stats.js)
+
+// Ролевая модель — формулы из образца forWork/countDopStats.js (без реликвий
+// и инвентаря): 5 основных характеристик (Сила/Ловкость/Здоровье/Скорость/
+// Мудрость) → по 3 вторичных стата от каждой. countLog(i) = trunc(((1+40/i)^
+// (i/40) − 1)/(e−1)·100) — универсальный переводчик стата в процент: блок =
+// countLog(Сила/2), крит = countLog(Ловк), мощь крита = 150 + 2·countLog(Ловк)
+// (начинается со 150%), уклонение = countLog(Ловк/2), ХП = 10 + 5·Здоровье,
+// подвижность/рефлексы и т.д. Опыт до уровня — кривая пользователя:
+// xpToNext(lvl) = trunc(((1+10/lvl)^(lvl/10) − 1)/(e−1)·100) (15 → 100).
+
+- **Битовый бюджет: ноль новых компонентов** (занято 30/32). ХП живут в
+  компонентах `hp/maxHp` — их при загрузке страницы регистрирует modules/health.js
+  (стиль того модуля устарел, но регистрация идемпотентна и переиспользуется).
+  Ролевые данные (STAT/FACTION) — обычные массивы фабрики, как STATE в ai.js.
+- **Разрешение удара** (`dealDamage`): уклонение (весь урон мимо, «уклон») →
+  крит бьющего (урон × мощь крита, большая жёлтая цифра «N!») → блок
+  (половина урона, серая цифра) → вычет ХП. Каждое событие — всплывающая
+  цифра над головой (modules/fx.js, слой над объектами) + красная вспышка
+  спрайта. Урон бросается при ВЫЛЕТЕ снаряда: `rollAttack(id)` → weaponMin..attack
+  (attack = Сила), снимок едет на снаряде (`PROJ[].attack`), поэтому смерть
+  стрелка в полёте не ломает попадание.
+- **Попадания**: melee-эффект бьёт разовым АоЕ (радиус 40) в момент появления;
+  летящий снаряд бьёт первую противника под собой (радиус = size·0.3+4) и гаснет.
+  Фракции: 0 — сторона героя, 1 — враги (снаряд бьёт только чужую фракцию).
+- **Полоска ХП** — ребёнок спрайта (culling и «ряды ног» достаются бесплатно),
+  показывается только когда ХП не полные. Контратака: выжив под melee-ударом —
+  шанс ответить своим оружием (гвард 1.2 с против пинг-понга).
+- **Смерть**: анимация death держит последний кадр (свой onComplete — штатный
+  снял бы ctrlLock, и «труп встал»), корпус тает и убирается (спрайт мимо
+  ядерного пула, `BOUND[id]=null`, колбэк `onRemove` чистит ряды ног и хендлы
+  сцены). Герой вместо уборки возрождается через 2.5 с с полным ХП.
+- **Опыт и уровни** (только герою): награда за вид (ENEMY_STATS[kind].xp),
+  обучаемость может удвоить; на уровне растут основные статы (HERO_BASE.growth
+  +2 всё), полный хил, пересчёт скорости (подвижность). Статы врагов —
+  ENEMY_STATS (уровень/статы/weaponMin/награда) + разброска +0..1 при спавне.
+- **Заделы на будущее** (считаются, но не применяются — способностей/дебафов
+  ещё нет): сопротивление, выносливость (+% к лечению — применяется в heal),
+  находчивость, сила воли, контрмагия. Применяются сейчас: подвижность
+  (скорость), рефлексы (кулдаун автоатаки героя), обучаемость.
+- **HUD героя** (правый верх): «Волк · ур. N · HP/Max» + полоски ХП и опыта
+  (modules/hud.bar). Отладка: `debug.info["ХП"]`, в `__TEST`: `combat`,
+  `heroStat()`, `heroDop()`, `giveXp(n)`.
+- **Прицельность**: `playAttack(id, aim)` запоминает точку цели
+  (`characters.getAim(id)`), модуль снарядов пускает летящий снаряд В ЦЕЛЬ
+  (анимация остаётся строкой взгляда). Без этого на диагоналях снаряд шёл по
+  оси взгляда и проходил мимо цели, стоящей в любой точке круга attackR.
+- **Отладка без отрисовки**: `index.html?raf=timeout` подменяет
+  requestAnimationFrame на setTimeout (до подключения Pixi) — игра грузится и
+  тикает на скрытой/перекрытой панели (автотесты); на обычном запуске не
+  включается.
+
 ## Отладка
 
 Глобальные хендлы (после `init()`):
@@ -1041,6 +1094,18 @@ window.__TEST    // полигон game.js: счёт, health, camera, scheduler,
   `ranged` (снаряд летит); `reach` — зона достижимости оружия. Атака героя
   убрана с пробела: автоатака ближайшего врага в reach (кулдаун 0.9 с);
   ИИ-враги останавливаются на дистанции `attackR` своего оружия.
+- **2026-09-15** — боевая и ролевая система: `data/stats.js` (формулы образца
+  `countDopStats.js`: countLog → проценты, кривая опыта пользователя, статы
+  героя и 8 видов врагов) + `modules/combat.js` (ХП в готовых компонентах
+  `hp/maxHp` — ноль новых бит; уклон → крит → блок; контратака; смерть с
+  тающим трупом и возрождением героя; опыт/уровни; полоски ХП над головами;
+  всплывающие цифры через `fx`). Снаряды несут снимок боевых данных владельца
+  (фракция + бросок урона) — попадания решает combat. Прицельная стрельба:
+  `playAttack(id, aim)`, melee-ИИ подходит на 0.6·reach. Подробности —
+  «Боевая и ролевая система».
+- **2026-09-15** — отладочный режим `?raf=timeout`: игра грузится и тикает без
+  реальных кадров (RAF на setTimeout) — для автотестов на скрытой панели;
+  без параметра ничего не меняется.
 
 
 ## Известные ограничения и идеи на будущее

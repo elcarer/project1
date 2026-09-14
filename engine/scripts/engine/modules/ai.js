@@ -150,9 +150,10 @@ function createEnemyAI({ world, ECS, COMPONENTS, addSystem = null,
                     }
                     if (dd <= s.attackR) {
                         // В зоне достижимости оружия: стоим и атакуем с перезарядкой
+                        // (цель передаётся прицелом — летящий снаряд летит в неё)
                         drive(id, 0, 0);
                         if (s.atkCd <= 0 && !COMPONENTS.ctrlLock[id]) {
-                            characters.playAttack(id);
+                            characters.playAttack(id, hero);
                             s.atkCd = ATTACK_CD;
                         }
                     } else {
