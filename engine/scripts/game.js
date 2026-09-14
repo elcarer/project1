@@ -5,7 +5,7 @@
 // показывает только видимые тайлы потоковая ECS-система modules/tilemap.js.
 // Все объекты мира и герой — сущности ECS (позиция/спрайт → culling ядра);
 // спрайты объектов разложены по «рядам ног» для дешёвой y-сортировки.
-// Оборотень (wolf_128, стандартный набор 11 анимаций) управляется
+// Оборотень (wolf_64, стандартный набор 11 анимаций) управляется
 // modules/character.js: стрелки/WASD/джойстик, диагональ играет анимацию
 // последнего нажатого направления, скольжение вдоль непроходимых клеток.
 //
@@ -224,16 +224,16 @@
     await frame();
     const spawn = findSpawn();
 
-    // ===== Оборотень: лист 5×11 кадров 128×128 + манифест строк =====
+    // ===== Оборотень: лист 5×11 кадров 64×64 + манифест строк =====
     setStage("загрузка персонажа…");
     await frame();
     const sheetTex = FILE_MODE
         ? await textureFromDataURL(EMBED.wolf.png)
-        : await PIXI.Assets.load("./images/sprites/wolf_128.png");
+        : await PIXI.Assets.load("./images/sprites/wolf_64.png");
     sheetTex.source.scaleMode = "nearest";
     const manifest = FILE_MODE
         ? EMBED.wolf.manifest
-        : await (await fetch("./images/sprites/wolf_128.json")).json();
+        : await (await fetch("./images/sprites/wolf_64.json")).json();
     const FR = manifest.size;
     const anims = {};
     for (const a of manifest.animations) {
@@ -256,9 +256,10 @@
     const characters = createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, input: charInput });
     const wolfId = characters.spawn({
         x: spawn.x, y: spawn.y, sprite: wolfSprite, anims,
-        speed: 150, fps: manifest.fps, // коллизия «ног» — по умолчанию 14×10
+        speed: 150, fps: manifest.fps,
+        halfW: 3.5, halfH: 2.5, // «ноги» — вдвое уже тайла (спрайт 64px)
     });
-    ECS.addComponent(world, wolfId, "cullPad", FR); // герой выше «ног» на весь кадр (128px)
+    ECS.addComponent(world, wolfId, "cullPad", FR); // герой выше «ног» на весь кадр (64px)
     // Герой ходит по «рядам ног» объектов: между рядами порядок задают
     // контейнеры, внутри ряда героя каждый кадр пересортировывает его zIndex
     // (ставит система персонажей). Ряды героя — единственное, что тасуется.
@@ -277,7 +278,7 @@
     const input = createInput(); // endFrame зовёт сцена В КОНЦЕ кадра (см. ниже)
     const camera = createCamera({ app, container: worldContainer, addSystem });
     // Средняя кнопка мыши — вернуть изначальный зум (preventDefault гасит autoscroll)
-    const INITIAL_ZOOM = 2;
+    const INITIAL_ZOOM = 2.5;
     app.canvas.addEventListener("mousedown", (e) => {
         if (e.button === 1) { e.preventDefault(); camera.setZoom(INITIAL_ZOOM); }
     });

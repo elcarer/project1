@@ -35,8 +35,8 @@ def webp_data_url(path):
 
 
 tiles = {name: png_data_url(os.path.join(ENGINE, "images", "tiles", name)) for name in TILES}
-wolf_png = webp_data_url(os.path.join(ENGINE, "images", "sprites", "wolf_128.png"))
-with open(os.path.join(ENGINE, "images", "sprites", "wolf_128.json"), encoding="utf-8") as fh:
+wolf_png = webp_data_url(os.path.join(ENGINE, "images", "sprites", "wolf_64.png"))
+with open(os.path.join(ENGINE, "images", "sprites", "wolf_64.json"), encoding="utf-8") as fh:
     wolf_manifest = json.load(fh)
 
 out = io.StringIO()
