@@ -5,7 +5,10 @@
 //     ПОСЛЕДНЕГО нажатого ещё удерживаемого направления (стек нажатий);
 //   • «скольжение» вдоль препятствий: оси двигаются НЕЗАВИСИМО — если персонаж
 //     идёт вправо и упёрся в стену, нажатое «вверх» везёт его вдоль неё;
-//   • анимации: walk_front/back/left/right в движении, wait в покое;
+//   • анимации: walk_front/back/left/right в движении; в покое персонаж
+//     ЗАМИРАЕТ в кадре 0 walk-строки своего взгляда (спавн — walk_front[0],
+//     взгляд вниз); после IDLE_WAIT_DELAY секунд бездействия wait играется
+//     ОДИН раз и персонаж снова замирает в стоп-кадре;
 //     play(id, name) — одиночные строки (attack_*, death, damage): блокируют
 //     авто-выбор, по завершении система сама возвращается к движению.
 //
@@ -35,6 +38,8 @@ const DIR_INDEX = { up: 0, down: 1, left: 2, right: 3 };
 // Направление → строка листа анимаций (стандартный набор 11 анимаций)
 const DIR_WALK = { up: "walk_back", down: "walk_front", left: "walk_left", right: "walk_right" };
 const DIR_ATTACK = { up: "attack_back", down: "attack_front", left: "attack_left", right: "attack_right" };
+// Секунд бездействия до одиночного проигрывания wait (потом снова стоп-кадр)
+const IDLE_WAIT_DELAY = 4;
 // Мёртвая зона стика: бюджет дрожи ручки — не путать с нажатием
 const PAD_DEADZONE = 0.4;
 const KEY_DIRS = {
@@ -155,6 +160,7 @@ function createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, input, a
     ECS.registerComponent("ctrlFacing", Uint8Array);
     ECS.registerComponent("ctrlMove", Uint8Array);
     ECS.registerComponent("ctrlLock", Uint8Array);
+    ECS.registerComponent("ctrlIdleT", Float32Array); // сек бездействия (до одиночного wait)
     ECS.registerComponent("ctrlAnim", Array);  // DATA: имя текущей строки анимаций
     ECS.registerComponent("ctrlAnims", Array); // DATA: { wait, walk_front, … } сущности
     // Персонаж = позиция + спрайт + параметры движения (без velocityX/Y: ядро
@@ -192,14 +198,16 @@ function createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, input, a
         ECS.addComponent(world, id, "ctrlFacing", DIR_INDEX[input.dir] ?? DIR_INDEX.down);
         ECS.addComponent(world, id, "ctrlMove", 0);
         ECS.addComponent(world, id, "ctrlLock", 0);
-        DATA.ctrlAnim[id] = "wait";
+        ECS.addComponent(world, id, "ctrlIdleT", 0);
+        DATA.ctrlAnim[id] = DIR_WALK.down;
         DATA.ctrlAnims[id] = anims;
         // autoUpdate=false: кадрами управляет animationSystem ядра в общем цикле
         sprite.autoUpdate = false;
-        sprite.textures = anims.wait;
-        sprite.loop = true;
-        sprite.gotoAndPlay(0);
-        // Однократная анимация доиграла — снять блок, система вернёт walk/wait
+        // Появление: стоп-кадр move front 0 — стоит, смотрит вниз
+        sprite.textures = anims[DIR_WALK.down] ?? anims.wait;
+        sprite.loop = false;
+        sprite.gotoAndStop(0);
+        // Однократная анимация доиграла — снять блок, система вернёт ходьбу/стоп-кадр
         sprite.onComplete = () => { if (world.active[id]) COMPONENTS.ctrlLock[id] = 0; };
         return id;
     }
@@ -220,6 +228,18 @@ function createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, input, a
         sprite.textures = frames;
         sprite.loop = true;
         sprite.gotoAndPlay(0);
+    }
+    // Стоп-кадр: персонаж стоит в кадре 0 walk-строки своего взгляда
+    // (не играет; повторный вызов для той же строки — без изменений)
+    function freezePose(id, name) {
+        if (DATA.ctrlAnim[id] === name && !DATA.spriteMap[id]?.playing) return;
+        const sprite = DATA.spriteMap[id];
+        const frames = DATA.ctrlAnims[id] && DATA.ctrlAnims[id][name];
+        if (!sprite || !frames) return;
+        DATA.ctrlAnim[id] = name;
+        sprite.textures = frames;
+        sprite.loop = false;
+        sprite.gotoAndStop(0);
     }
     // Однократная (attack_*, death, damage): прокручивается до конца, затем
     // система сама вернётся к walk/wait. Пока идёт — движение анимацию не
@@ -264,7 +284,23 @@ function createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, input, a
             }
             COMPONENTS.ctrlMove[id] = moving ? 1 : 0;
             COMPONENTS.ctrlFacing[id] = DIR_INDEX[face] ?? 1;
-            if (!COMPONENTS.ctrlLock[id]) setAnim(id, moving ? DIR_WALK[face] : "wait");
+            if (!COMPONENTS.ctrlLock[id]) {
+                if (moving) {
+                    COMPONENTS.ctrlIdleT[id] = 0;
+                    setAnim(id, DIR_WALK[face]);
+                } else {
+                    // Покой: замереть в стоп-кадре walk-строки взгляда; спустя
+                    // IDLE_WAIT_DELAY секунд бездействия wait играется ОДИН раз
+                    // (доиграет → ctrlLock снимется, персонаж снова замрёт)
+                    COMPONENTS.ctrlIdleT[id] += dt;
+                    if (COMPONENTS.ctrlIdleT[id] >= IDLE_WAIT_DELAY) {
+                        COMPONENTS.ctrlIdleT[id] = 0;
+                        play(id, "wait");
+                    } else {
+                        freezePose(id, DIR_WALK[face]);
+                    }
+                }
+            }
             // y-сортировка среди объектов карты (контейнер со sortableChildren)
             const sprite = DATA.spriteMap[id];
             if (sprite) sprite.zIndex = COMPONENTS.positionY[id];
