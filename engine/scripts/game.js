@@ -8,9 +8,9 @@
 // Оборотень (wolf_64, стандартный набор 11 анимаций) управляется
 // modules/character.js: стрелки/WASD/джойстик, диагональ играет анимацию
 // последнего нажатого направления, скольжение вдоль непроходимых клеток.
-// Рядом строем стоят NPC — персонажи из forWork, склеенные в листы формата
-// волка скриптом scripts/pack_characters.py; ввод у всех общий, пробел
-// атакует всеми (тестовая витрина анимаций).
+// По карте расселены ИИ-враги (деревни гоблинов/дворфов/орков с элитками,
+// пауки и крысы в лесах, октопусы в воде) — modules/ai.js; пробел атакует
+// героя, выпуская снаряд (modules/projectiles.js, data/attacks.js).
 //
 // Параметры запуска: index.html?w=500&h=500&seed=7 (по умолчанию 500×500,
 // случайный сид — он показывается в оверлее отладки, чтобы мир можно было
@@ -267,72 +267,20 @@
     wolfRowFollow(); // сразу в правильный ряд — к первому кадру
     addSystem(wolfRowFollow);
 
-    // ===== NPC тестовой карты: персонажи scripts/pack_characters.py ============
-    // Сырые полосы forWork склеены в листы 5×11 формата волка (стандартный набор
-    // 11 анимаций). Каждый NPC — полноценная сущность контроллера персонажей;
-    // ввод общий, поэтому строй ходит и атакует вместе с героем — за один проход
-    // видно все анимации всех персонажей.
-    setStage("загрузка NPC…");
-    await frame();
-    const NPC_SHEETS = [
-        "bat_64", "cyclop_128", "dark_64", "demon_128", "dwarf_64",
-        "goba_64", "hound_64", "imp_64", "lider_64", "medusa_128",
-        "mummy_64", "octopus_64", "ogr_64", "orc_64", "rat_64",
-        "shaman_64", "spider_64", "spiderboss_64", "spiderman_64", "spiderRed_64",
-        "spike_64", "succubus_64", "vampire_64",
-        "knight_64", "rogue_64", "sorca_64", "valca_64",
-    ];
-    // Свободная точка ног возле (x, y): спот может попасть в воду/объект
-    function freeSpotNear(x, y) {
-        if (!blocked(x, y)) return { x, y };
-        for (let r = 1; r <= 10; r++) {
-            for (let dy = -r; dy <= r; dy++) {
-                for (let dx = -r; dx <= r; dx++) {
-                    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-                    if (!blocked(x + dx * TS, y + dy * TS)) return { x: x + dx * TS, y: y + dy * TS };
-                }
-            }
-        }
-        return { x, y }; // всё вокруг занято — ставим как есть (утонет, но не сломает игру)
-    }
-    const npcs = []; // { name, id, size } — хендл для сцены и __TEST
-    const npcRowTrack = []; // { sprite, id } — переселение между рядами ног
-    for (let i = 0; i < NPC_SHEETS.length; i++) {
-        const base = NPC_SHEETS[i];
-        setStage(`загрузка NPC… ${i + 1}/${NPC_SHEETS.length}`);
-        if (i % 8 === 0) await frame();
-        const ch = FILE_MODE
-            ? await assets.loadCharacter(base, EMBED.chars[base])
-            : await assets.loadCharacter(`${SPRITES_DIR}${base}`);
-        const npcSprite = new PIXI.AnimatedSprite(ch.animations.wait, false);
-        npcSprite.anchor.set(0.5, 1); // позиция сущности = точка ног
-        const COLS = 9, GAP = TS * 3; // строй: 9 в ряду, шаг 3 тайла
-        const spot = freeSpotNear(
-            spawn.x + ((i % COLS) - (COLS - 1) / 2) * GAP,
-            spawn.y + TS * 5 + Math.floor(i / COLS) * GAP);
-        const id = characters.spawn({
-            x: spot.x, y: spot.y, sprite: npcSprite, anims: ch.animations,
-            speed: 120, fps: ch.fps,
-            halfW: ch.size / 64 * 3.5, halfH: ch.size / 64 * 2.5, // коробка «ног» волка, масштабированная кадром
-        });
-        ECS.addComponent(world, id, "cullPad", ch.size); // NPC выше «ног» на весь кадр
-        npcRowTrack.push({ sprite: npcSprite, id });
-        projectiles.bind(id, base.replace(/_\d+$/, "")); // NPC витрины тоже атакуют снарядами
-        npcs.push({ name: base, id, size: ch.size });
-    }
-    // Ряды ног NPC — как у героя: контейнеры рядов держат порядок между рядами
-    const npcRowCache = npcRowTrack.map(() => -1);
-    function npcRowFollow() {
-        npcRowTrack.forEach(({ sprite, id }, k) => {
+    // ===== Ряды ног живых существ: герой ходит между контейнерами рядов; =====
+    // тот же механизм переиспользуют враги (переселение раз в кадр)
+    const creatureRowTrack = []; // { sprite, id }
+    const creatureRowCache = [];
+    function creatureRowFollow() {
+        creatureRowTrack.forEach(({ sprite, id }, k) => {
             const r = Math.max(0, Math.min(H, Math.floor(COMPONENTS.positionY[id] / TS)));
-            if (r === npcRowCache[k]) return;
-            if (npcRowCache[k] >= 0) sprite.removeFromParent();
+            if (r === creatureRowCache[k]) return;
+            if (creatureRowCache[k] >= 0) sprite.removeFromParent();
             rows[r].addChild(sprite);
-            npcRowCache[k] = r;
+            creatureRowCache[k] = r;
         });
     }
-    npcRowFollow(); // сразу в правильные ряды — к первому кадру
-    addSystem(npcRowFollow);
+    addSystem(creatureRowFollow);
 
     // ===== Враги: деревни и дикие (modules/ai.js) ==============================
     // Гоблины (элитка — шаман), дворфы, орки (элитка — огр) живут деревнями;
@@ -358,6 +306,19 @@
         getPlayerPos: () => ({ x: COMPONENTS.positionX[wolfId], y: COMPONENTS.positionY[wolfId] }),
     });
     const enemies = []; // { name, id, size } — хендл для __TEST
+    // Свободная точка ног возле (x, y): спот может попасть в воду/объект
+    function freeSpotNear(x, y) {
+        if (!blocked(x, y)) return { x, y };
+        for (let r = 1; r <= 10; r++) {
+            for (let dy = -r; dy <= r; dy++) {
+                for (let dx = -r; dx <= r; dx++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+                    if (!blocked(x + dx * TS, y + dy * TS)) return { x: x + dx * TS, y: y + dy * TS };
+                }
+            }
+        }
+        return { x, y }; // всё вокруг занято — ставим как есть (утонет, но не сломает игру)
+    }
     function spawnEnemy(kind, x, y) {
         const ch = enemyKinds[kind], st = KIND_STATS[kind];
         const sprite = new PIXI.AnimatedSprite(ch.animations.wait, false);
@@ -369,7 +330,8 @@
         ECS.addComponent(world, id, "cullPad", ch.size);
         if (st.swim) ECS.addComponent(world, id, "ctrlSwim", 1);
         ai.register(id, { detectR: st.detect, leashR: st.leash, patrolR: st.patrol });
-        npcRowTrack.push({ sprite, id }); // ряды ног — общий механизм с NPC
+        creatureRowTrack.push({ sprite, id });
+        creatureRowCache.push(-1);
         projectiles.bind(id, kind);
         enemies.push({ name: kind, id, size: ch.size });
     }
@@ -505,12 +467,9 @@
         },
         update(ticker) {
             characters.update(ticker); // ввод → коллизии/скольжение → анимация (по компонентам)
-            // Пробел — одиночная атака в сторону взгляда (демо play()/анимаций
-            // атаки): герой и весь строй NPC
-            if (input.wasPressed("Space")) {
-                characters.playAttack(wolfId);
-                for (const n of npcs) characters.playAttack(n.id);
-            }
+            // Пробел — одиночная атака героя в сторону взгляда: контроллер
+            // играет attack_*, модуль снарядов выпускает снаряд на spawnTick
+            if (input.wasPressed("Space")) characters.playAttack(wolfId);
             // Колесо — зум (вверх — ближе); отдаление ограничено окном тайлов
             if (input.pointer.wheel !== 0) {
                 camera.zoomBy(1 - input.pointer.wheel * 0.1);
@@ -545,29 +504,12 @@
     hud.removeText("status");
 
     console.log(`[game] мир ${W}×${H} сид ${SEED}: объектов ${gen.placements.length}, POI ${gen.pois.length}; ` +
-        `персонаж (сущность ${wolfId}) в (${spawn.x | 0}, ${spawn.y | 0}) + NPC ${npcs.length} + врагов ${enemies.length}; рендерер ${app.renderer.name}`);
+        `персонаж (сущность ${wolfId}) в (${spawn.x | 0}, ${spawn.y | 0}) + врагов ${enemies.length}; рендерер ${app.renderer.name}`);
 
     // ===== Хендл для автотестов из консоли браузера =====
-    // Превью строки анимаций NPC: wait/walk_* крутятся в цикле, остальное
-    // однократно; npcRelease возвращает персонажа под управление системы.
-    function npcPreview(id, name) {
-        const frames = DATA.ctrlAnims[id] && DATA.ctrlAnims[id][name];
-        if (!frames) return false;
-        const sprite = DATA.spriteMap[id];
-        DATA.ctrlAnim[id] = name;
-        COMPONENTS.ctrlLock[id] = 1; // авто-выбор анимации приостановлен
-        sprite.textures = frames;
-        sprite.loop = name === "wait" || name.startsWith("walk_");
-        sprite.gotoAndPlay(0);
-        return true;
-    }
-    function npcRelease(id) {
-        COMPONENTS.ctrlLock[id] = 0;
-        DATA.ctrlAnim[id] = ""; // система сама вернёт walk/wait
-    }
     window.__TEST = {
         wolfId, characters, camera, input, scenes, blocked, tiles, tilesHolder, bake: cornerTex,
-        components: COMPONENTS, data: DATA, npcs, npcPreview, npcRelease, enemies, ai, projectiles,
+        components: COMPONENTS, data: DATA, enemies, ai, projectiles,
         world: () => ({ w: W, h: H, seed: SEED, objects: gen.placements.length, pois: gen.pois.length }),
         info: (id = wolfId) => ({
             x: COMPONENTS.positionX[id], y: COMPONENTS.positionY[id],
