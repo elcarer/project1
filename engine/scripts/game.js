@@ -1,7 +1,11 @@
 // ИГРОВАЯ ЛОГИКА — открытый мир (dualgrid) + контроллер персонажа.
 // При старте генерируется карта «открытого мира» теми же функциями, что и в
-// редакторе (dual.generateWorld + dual.generateWorldObjects), поверх неё
-// спавнится оборотень (wolf_128, стандартный набор 11 анимаций) под управлением
+// редакторе (dual.generateWorld + dual.generateWorldObjects); четыре слоя пола
+// запекаются в один при загрузке (перекрытые тайлы отбрасываются), и этот слой
+// показывает только видимые тайлы потоковая ECS-система modules/tilemap.js.
+// Все объекты мира и герой — сущности ECS (позиция/спрайт → culling ядра);
+// спрайты объектов разложены по «рядам ног» для дешёвой y-сортировки.
+// Оборотень (wolf_128, стандартный набор 11 анимаций) управляется
 // modules/character.js: стрелки/WASD/джойстик, диагональ играет анимацию
 // последнего нажатого направления, скольжение вдоль непроходимых клеток.
 //
@@ -12,8 +16,8 @@
 //
 // Модули-глобали (см. index.html): PIXI, init/ECS/world/… (engine.js),
 // createDualGrid, createInput, createCamera, createCharacterInput,
-// createCharacterSystem, createHUD, createScenes, createDebug,
-// DUALGRID_OBJECTS (реестр), EMBEDDED_GAME_ASSETS (только file://).
+// createCharacterSystem, createTilemapSystem, createHUD, createScenes,
+// createDebug, DUALGRID_OBJECTS (реестр), EMBEDDED_GAME_ASSETS (только file://).
 (async () => {
     const engine = await init();
     const { app, worldContainer, world, ECS, COMPONENTS, DATA, SpatialHashGrid, addSystem } = engine;
@@ -65,8 +69,6 @@
     setStage("загрузка тайлсетов…");
     await frame();
     const TILESETS = ["grass_dirt.png", "grass_water.png", "snow_dirt.png", "sand_dirt.png"];
-    // Флаги слоёв как в редакторе: база рисует фон, наслагаемые — только фичи
-    const HIDE_BG = { "grass_dirt.png": false, "grass_water.png": true, "snow_dirt.png": true, "sand_dirt.png": true };
     const tileTex = {};
     for (const name of TILESETS) {
         const tex = FILE_MODE
@@ -116,25 +118,72 @@
         })),
     });
 
-    // ===== Слои пола (порядок и флаги — как в редакторе) =====
-    setStage("сборка слоёв пола…");
+    // ===== Пол: запекание слоёв редактора в ОДИН слой ещё при загрузке =====
+    // Четыре слоя нужны только редактору (для рисования). Тайлы dualgrid
+    // непрозрачны (фон запечён в каждый тайл), поэтому для каждого угла двойной
+    // сетки достаточно ВЕРХНЕГО непустого тайла (песок → снег → вода → база):
+    // всё, что под ним, не видно никому и отбрасывается — остаётся одна текстура
+    // на угол. В кадре её показывает modules/tilemap.js (только видимые углы).
+    setStage("запекание слоя пола…");
     await frame();
-    for (const name of TILESETS) {
-        worldContainer.addChild(dual.build({
-            texture: tileTex[name],
-            map: { w: W, h: H, data: worldData.masks[name] },
-            outside: 0,
-            layout: dual.TILE_CORNERS,
-            hideBackground: HIDE_BG[name],
-        }));
+    const LAYERS_FROM_TOP = [ // порядок отрисовки редактора, верхний первым
+        ["sand_dirt.png", true], ["snow_dirt.png", true],
+        ["grass_water.png", true], ["grass_dirt.png", false],
+    ];
+    const atlas = {};  // тайлсет → { textures: [16], ts }
+    const maskMap = {}; // тайлсет → карта-маска для tileIndex
+    for (const [name] of LAYERS_FROM_TOP) {
+        atlas[name] = dual.sliceTileset(tileTex[name]);
+        maskMap[name] = { w: W, h: H, data: worldData.masks[name] };
     }
+    // «Чисто фоновый» тайл — тот, у которого все 4 угла ячеек = 0 (в базовой
+    // раскладке это 12, не 0!). У наслагаемых слоёв он не рисуется, как и в редакторе.
+    const BG_TILE = dual.TILE_CORNERS.findIndex(([tl, tr, bl, br]) => !tl && !tr && !bl && !br);
+    const cornerTex = new Array((W + 1) * (H + 1)); // текстура угла (i, j)
+    for (let j = 0; j <= H; j++) {
+        if (j % 64 === 0) { setStage(`запекание слоя пола… ${j}/${H + 1}`); await frame(); }
+        for (let i = 0; i <= W; i++) {
+            let tex = null;
+            for (const [name, hideBg] of LAYERS_FROM_TOP) {
+                const t = dual.tileIndex(maskMap[name], i, j);
+                if (!hideBg || t !== BG_TILE) { tex = atlas[name].textures[t]; break; }
+            }
+            cornerTex[j * (W + 1) + i] = tex;
+        }
+    }
+    const tilesHolder = new PIXI.Container(); // тайлы — ниже объектов
+    worldContainer.addChild(tilesHolder);
 
-    // ===== Объекты (y-сортировка включена в buildObjects) =====
+    // ===== Объекты: ECS-сущности; спрайты — по «рядам ног» для y-сортировки =====
+    // Один sortableChildren-контейнер с 23 тысячами спрайтов пересортировывался
+    // бы целиком каждый кадр (герой меняет zIndex). Ряды-полосы высотой TS:
+    // между рядами порядок задают сами контейнеры, сортировка по Y — только
+    // внутри ряда; ряд статичен и не тасуется, пока в него не войдёт герой.
     setStage(`расстановка объектов (${gen.placements.length})…`);
     await frame();
     const objHolder = dual.buildObjects({ items: objItems, ts: TS, w: W, h: H });
     dual.syncObjects(objHolder, gen.placements);
     worldContainer.addChild(objHolder);
+    const objSprites = objHolder.removeChildren(); // уже с anchor/zIndex/позицией
+    objHolder.sortableChildren = false; // порядок теперь держат ряды
+    const rows = [];
+    for (let r = 0; r <= H; r++) {
+        const row = new PIXI.Container();
+        row.sortableChildren = true;
+        objHolder.addChild(row);
+        rows.push(row);
+    }
+    setStage(`ECS-сущности объектов (0/${objSprites.length})…`);
+    await frame();
+    for (let n = 0; n < objSprites.length; n++) {
+        const sp = objSprites[n];
+        rows[Math.min(H, Math.round(sp.y / TS))].addChild(sp); // y спрайта = точка ног
+        const id = ECS.addEntity(world);
+        ECS.addComponent(world, id, "positionX", sp.x);
+        ECS.addComponent(world, id, "positionY", sp.y);
+        ECS.addComponent(world, id, "spriteMap", sp); // → renderable: позиция и culling ядра
+        if (n % 8192 === 0) { setStage(`ECS-сущности объектов (${n}/${objSprites.length})…`); await frame(); }
+    }
 
     // ===== Коллизии: вода + непроходимые клетки объектов + границы карты =====
     const solid = dual.buildCollisionMap({
@@ -196,7 +245,6 @@
     }
     const wolfSprite = new PIXI.AnimatedSprite(anims.wait, false);
     wolfSprite.anchor.set(0.5, 1); // позиция сущности = точка ног
-    objHolder.addChild(wolfSprite); // y-сортировка: заходит за стволы и перед ними
 
     // ===== Персонаж — ECS-сущность, контроллер — система (modules/character.js) ==
     // Спрайт ставит на место renderSystem ядра, кадры крутит animationSystem,
@@ -207,6 +255,19 @@
         x: spawn.x, y: spawn.y, sprite: wolfSprite, anims,
         speed: 150, fps: manifest.fps, // коллизия «ног» — по умолчанию 14×10
     });
+    // Герой ходит по «рядам ног» объектов: между рядами порядок задают
+    // контейнеры, внутри ряда героя каждый кадр пересортировывает его zIndex
+    // (ставит система персонажей). Ряды героя — единственное, что тасуется.
+    let wolfRow = -1;
+    function wolfRowFollow() {
+        const r = Math.max(0, Math.min(H, Math.floor(COMPONENTS.positionY[wolfId] / TS)));
+        if (r === wolfRow) return;
+        if (wolfRow >= 0) wolfSprite.removeFromParent();
+        rows[r].addChild(wolfSprite);
+        wolfRow = r;
+    }
+    wolfRowFollow(); // сразу в правильный ряд — к первому кадру
+    addSystem(wolfRowFollow);
 
     // ===== Модули: ввод, камера-слежение, отладка =====
     const input = createInput(); // endFrame зовёт сцена В КОНЦЕ кадра (см. ниже)
@@ -220,6 +281,20 @@
     camera.setBounds({ x: 0, y: 0, width: W * TS, height: H * TS });
     camera.setZoom(2);
     camera.centerOn(spawn.x, spawn.y);
+    // Пол — потоковая ECS-система тайлов: создаётся ПОСЛЕ камеры, чтобы её тик
+    // шёл сразу за тиком камеры (окно по свежему виду, без лага в кадр)
+    const tiles = createTilemapSystem({
+        world, ECS, DATA, addSystem,
+        container: tilesHolder, Sprite: PIXI.Sprite,
+        getView() { // тот же вид, по которому ядро делает culling (renderSystem)
+            const s = worldContainer.scale.x || 1;
+            const halfW = app.screen.width / (2 * s), halfH = app.screen.height / (2 * s);
+            return { left: worldContainer.pivot.x - halfW, top: worldContainer.pivot.y - halfH,
+                     right: worldContainer.pivot.x + halfW, bottom: worldContainer.pivot.y + halfH };
+        },
+        mapW: W, mapH: H, ts: TS, margin: 2,
+        tileAt: (i, j) => cornerTex[j * (W + 1) + i],
+    });
     const debug = createDebug({
         app, addSystem, world, grid: SpatialHashGrid, components: COMPONENTS,
         layer: worldContainer, overlayPos: { x: 16, y: 32 },
@@ -236,8 +311,11 @@
             characters.update(ticker); // ввод → коллизии/скольжение → анимация (по компонентам)
             // Пробел — одиночная атака в сторону взгляда (демо play()/анимаций атаки)
             if (input.wasPressed("Space")) characters.playAttack(wolfId);
-            // Колесо — зум (вверх — ближе)
-            if (input.pointer.wheel !== 0) camera.zoomBy(1 - input.pointer.wheel * 0.1);
+            // Колесо — зум (вверх — ближе); отдаление ограничено окном тайлов
+            if (input.pointer.wheel !== 0) {
+                camera.zoomBy(1 - input.pointer.wheel * 0.1);
+                camera.setZoom(Math.min(4, Math.max(0.5, camera.cam.zoom)));
+            }
             if (input.wasPressed("KeyP")) scenes.go("pause");
             // Оверлей отладки: параметры мира и живое состояние сущности из компонентов
             debug.info["Сид"] = SEED;
@@ -245,6 +323,8 @@
             debug.info["Позиция"] = `${COMPONENTS.positionX[wolfId] | 0}, ${COMPONENTS.positionY[wolfId] | 0}`;
             debug.info["Анимация"] = DATA.ctrlAnim[wolfId];
             debug.info["Взгляд"] = characters.facingName(wolfId);
+            debug.info["Тайлов на экране"] = tiles.stats().tiles;
+            debug.info["Сущностей ECS"] = world.entities.length;
             input.endFrame(); // сброс однокадровых флагов В КОНЦЕ кадра
         },
     });
@@ -269,7 +349,7 @@
 
     // ===== Хендл для автотестов из консоли браузера =====
     window.__TEST = {
-        wolfId, characters, camera, input, scenes, blocked,
+        wolfId, characters, camera, input, scenes, blocked, tiles,
         components: COMPONENTS, data: DATA,
         world: () => ({ w: W, h: H, seed: SEED, objects: gen.placements.length, pois: gen.pois.length }),
         info: () => ({

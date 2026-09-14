@@ -1443,7 +1443,7 @@ function createDualGrid() {
         return result;
     }
 
-    return { build, update, tileIndex, detectLayout, generateMap, separateLayer, dilateMask,
+    return { build, update, tileIndex, sliceTileset: makeTileTextures, detectLayout, generateMap, separateLayer, dilateMask,
              fbmField, rankNormalize, generateWorld, generateWorldObjects,
              WORLD_OBJ_NAMES, WORLD_VEG,
              makeManifest, makeMap, mapFromManifest, mapFromJSON, TILE_CORNERS,
