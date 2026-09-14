@@ -230,7 +230,10 @@ function createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, blockedA
 
     // ── АНИМАЦИИ ────────────────────────────────────────────────────────────
     function setAnim(id, name) {
-        if (DATA.ctrlAnim[id] === name) return;
+        // Ранний выход только если строка та же И она реально играет: после
+        // freezePose стоп-кадра ctrlAnim уже «walk_направление», но спрайт
+        // остановлен — возобновление ходьбы обязано перезапустить её
+        if (DATA.ctrlAnim[id] === name && DATA.spriteMap[id]?.playing) return;
         DATA.ctrlAnim[id] = name;
         const sprite = DATA.spriteMap[id];
         const frames = DATA.ctrlAnims[id] && DATA.ctrlAnims[id][name];
