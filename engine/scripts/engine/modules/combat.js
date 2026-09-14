@@ -118,13 +118,13 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
     }
 
     // Всплывающая подпись над головой (цифры урона, «уклон», опыт, уровни)
-    function floatText(id, str, color, size = 10, life = 0.8) {
+    function floatText(id, str, color, size = 22, life = 0.8) {
         const s = STAT[id];
         if (!s || !world.active[id]) return;
         fx.text(
             COMPONENTS.positionX[id] + (Math.random() * 18 - 9),
             COMPONENTS.positionY[id] - s.size * 0.55,
-            str, { color, size, life, rise: 26 },
+            str, { color, size, life, rise: 34 },
         );
     }
 
@@ -150,7 +150,7 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
         COMPONENTS.hp[targetId] = Math.max(0, COMPONENTS.hp[targetId] - dmg);
         floatText(targetId, crit ? `${dmg}!` : String(dmg),
             crit ? "#ffc531" : blocked ? "#9aa4ad" : "#ffffff",
-            crit ? 13 : 10, crit ? 1 : 0.8);
+            crit ? 28 : 22, crit ? 1.1 : 0.8);
         // Вспышка попадания
         t.flashT = 0.12;
         const sprite = DATA.spriteMap[targetId];
@@ -187,7 +187,7 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
             COMPONENTS.maxHp[id] = s.dop.hpMax;
             COMPONENTS.hp[id] = s.dop.hpMax; // новый уровень — полное здоровье
             COMPONENTS.ctrlSpeed[id] = s.baseSpeed * (1 + s.dop.move / 100);
-            floatText(id, `УРОВЕНЬ ${s.lvl}`, "#cc7dee", 13, 1.4);
+            floatText(id, `УРОВЕНЬ ${s.lvl}`, "#cc7dee", 28, 1.6);
             updateBar(id);
             need = xpToNext(s.lvl);
         }

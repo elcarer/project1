@@ -26,7 +26,7 @@ function createFX({ app, layer, addSystem }) {
     const textPool = createPool(() => {
         const label = new PIXI.Text({
             text: "",
-            style: { fontFamily: globalThis.GAME_FONT || "monospace", fontSize: 14, fill: 0xffffff },
+            style: { fontFamily: globalThis.GAME_FONT || "monospace", fontSize: 28, fill: 0xffffff },
         });
         label.anchor.set(0.5);
         label.visible = false;

@@ -51,13 +51,11 @@
         ? clampInt(q.get("seed"), 0, 2147483647, 1)
         : Math.floor(Math.random() * 2147483647);
 
-    // ===== HUD: подсказка + статус загрузки (+ полоски героя ниже) =============
+    // ===== HUD: подсказка (статус загрузки — на экране загрузки ниже) =========
     const hud = createHUD({ app, addSystem }); // addSystem — автообновление bar()-ов
     hud.text("hint", "WASD/стрелки/джойстик — движение | атака автоматическая | колесо — зум | P — пауза", {
-        x: 16, y: 12, size: 12, color: "#88ffcc",
+        x: 16, y: 12, size: 24, color: "#88ffcc",
     });
-    hud.text("status", "загрузка…", { x: 16, y: 32, size: 14, color: "#ffee66" });
-    const setStage = (s) => hud.setText("status", s);
     const frame = () => new Promise((r) => requestAnimationFrame(r)); // дать статусу отрисоваться
 
     // На file:// картинка с диска — чужой origin: WebGL не грузит её в GPU,
@@ -72,8 +70,43 @@
     const assets = createAssets();
     const SPRITES_DIR = "./images/sprites/";
 
+    // ===== Экран загрузки: рамка bigBar + золотая линия loadBarLine ============
+    // Спрайты интерфейса (images/ui): по http живые файлы, на file:// вшитые
+    // EMBED.ui. Прогресс загрузки мира тикает через setStage(метка, доля).
+    const uiTex = {};
+    for (const [key, base] of [["bar", "bigBar"], ["line", "loadBarLine"]]) {
+        uiTex[key] = FILE_MODE
+            ? await assets.textureFromDataURL(EMBED.ui[base])
+            : await assets.loadTexture(`./images/ui/${base}.png`);
+    }
+    const loader = new PIXI.Container();
+    const barFrame = new PIXI.Sprite(uiTex.bar);
+    const barLine = new PIXI.Sprite(uiTex.line);
+    barLine.position.set(46, 20); // внутреннее окно рамки 407×64 → линия 315×24
+    const barMask = new PIXI.Graphics();
+    barMask.renderable = false; // служит маской линии загрузки
+    barLine.mask = barMask;
+    const barLabel = new PIXI.Text({
+        text: "загрузка…",
+        style: { fontFamily: GAME_FONT, fontSize: 24, fill: "#e8d5a0" },
+    });
+    barLabel.anchor.set(0.5, 0); // метка по центру под рамкой
+    barLabel.position.set(barFrame.width / 2, barFrame.height + 14);
+    loader.addChild(barFrame, barMask, barLine, barLabel);
+    loader.position.set(
+        Math.round((app.screen.width - barFrame.width) / 2),
+        Math.round(app.screen.height / 2 - barFrame.height / 2),
+    );
+    app.stage.addChild(loader);
+    let loadRatio = 0;
+    const setStage = (s, r) => {
+        if (typeof r === "number") loadRatio = r;
+        barLabel.text = s;
+        barMask.clear().rect(46, 20, Math.max(0.001, 315 * loadRatio), 24).fill(0xffffff);
+    };
+
     // ===== Текстуры тайлсетов =====
-    setStage("загрузка тайлсетов…");
+    setStage("загрузка тайлсетов…", 0.02);
     await frame();
     const TILESETS = ["grass_dirt.png", "grass_water.png", "snow_dirt.png", "sand_dirt.png"];
     const tileTex = {};
@@ -85,7 +118,7 @@
 
     // ===== Реестр объектов (index.html подключает images/objects/objects_data.js) =====
     if (!window.DUALGRID_OBJECTS) throw new Error("objects_data.js не подключён в index.html");
-    setStage("загрузка реестра объектов…");
+    setStage("загрузка реестра объектов…", 0.05);
     await frame();
     const registry = window.DUALGRID_OBJECTS.items;
     const baseName = (p) => String(p).split(/[\\/]/).pop();
@@ -98,11 +131,11 @@
             texture: tex,
             pass: (typeof it.pass === "string" && it.pass.length === it.cellsX * it.cellsY) ? it.pass : null,
         });
-        if (i % 64 === 0) { setStage(`реестр объектов… ${i}/${registry.length}`); await frame(); }
+        if (i % 64 === 0) { setStage(`реестр объектов… ${i}/${registry.length}`, 0.05 + (i / registry.length) * 0.08); await frame(); }
     }
 
     // ===== ГЕНЕРАЦИЯ МИРА (те же функции, что у кнопки «🌍 Сгенерировать мир») =====
-    setStage(`генерация мира ${W}×${H}, сид ${SEED}…`);
+    setStage(`генерация мира ${W}×${H}, сид ${SEED}…`, 0.15);
     await frame();
     const worldData = dual.generateWorld({ w: W, h: H, seed: SEED });
     const gen = dual.generateWorldObjects({
@@ -122,7 +155,7 @@
     // сетки достаточно ВЕРХНЕГО непустого тайла (песок → снег → вода → база):
     // всё, что под ним, не видно никому и отбрасывается — остаётся одна текстура
     // на угол. В кадре её показывает modules/tilemap.js (только видимые углы).
-    setStage("запекание слоя пола…");
+    setStage("запекание слоя пола…", 0.20);
     await frame();
     const LAYERS_FROM_TOP = [ // порядок отрисовки редактора, верхний первым
         ["sand_dirt.png", true], ["snow_dirt.png", true],
@@ -139,7 +172,7 @@
     const BG_TILE = dual.TILE_CORNERS.findIndex(([tl, tr, bl, br]) => !tl && !tr && !bl && !br);
     const cornerTex = new Array((W + 1) * (H + 1)); // текстура угла (i, j)
     for (let j = 0; j <= H; j++) {
-        if (j % 64 === 0) { setStage(`запекание слоя пола… ${j}/${H + 1}`); await frame(); }
+        if (j % 64 === 0) { setStage(`запекание слоя пола… ${j}/${H + 1}`, 0.20 + (j / (H + 1)) * 0.38); await frame(); }
         for (let i = 0; i <= W; i++) {
             let tex = null;
             for (const [name, hideBg] of LAYERS_FROM_TOP) {
@@ -157,7 +190,7 @@
     // бы целиком каждый кадр (герой меняет zIndex). Ряды-полосы высотой TS:
     // между рядами порядок задают сами контейнеры, сортировка по Y — только
     // внутри ряда; ряд статичен и не тасуется, пока в него не войдёт герой.
-    setStage(`расстановка объектов (${gen.placements.length})…`);
+    setStage(`расстановка объектов (${gen.placements.length})…`, 0.60);
     await frame();
     const objHolder = dual.buildObjects({ items: objItems, ts: TS, w: W, h: H });
     dual.syncObjects(objHolder, gen.placements);
@@ -171,7 +204,7 @@
         objHolder.addChild(row);
         rows.push(row);
     }
-    setStage(`ECS-сущности объектов (0/${objSprites.length})…`);
+    setStage(`ECS-сущности объектов (0/${objSprites.length})…`, 0.62);
     await frame();
     for (let n = 0; n < objSprites.length; n++) {
         const sp = objSprites[n];
@@ -183,7 +216,7 @@
         // Крона выше точки «ног»: ядро кульит по габариту — деревья выплывают
         // из-за края экрана постепенно, а не возникают целиком
         ECS.addComponent(world, id, "cullPad", Math.max(sp.texture.height, sp.texture.width / 2));
-        if (n % 8192 === 0) { setStage(`ECS-сущности объектов (${n}/${objSprites.length})…`); await frame(); }
+        if (n % 8192 === 0) { setStage(`ECS-сущности объектов (${n}/${objSprites.length})…`, 0.62 + (n / objSprites.length) * 0.10); await frame(); }
     }
 
     // ===== Коллизии: вода + непроходимые клетки объектов + границы карты =====
@@ -218,12 +251,12 @@
         }
         return { x: (cx + 0.5) * TS, y: (cy + 0.5) * TS };
     }
-    setStage("спавн персонажа…");
+    setStage("спавн персонажа…", 0.74);
     await frame();
     const spawn = findSpawn();
 
     // ===== Оборотень: лист 5×11 кадров 64×64 + манифест строк =====
-    setStage("загрузка персонажа…");
+    setStage("загрузка персонажа…", 0.76);
     await frame();
     const wolf = FILE_MODE
         ? await assets.loadCharacter("wolf_64", EMBED.wolf)
@@ -284,12 +317,12 @@
         weaponMin: HERO_BASE.weaponMin,
     });
     // HUD героя: уровень/ХП и полоска опыта (правый верхний угол, поверх мира)
-    hud.text("heroLvl", "", { x: app.screen.width - 226, y: 12, size: 14, color: "#ffffff" });
+    hud.text("heroLvl", "", { x: app.screen.width - 320, y: 8, size: 28, color: "#ffffff" });
     const heroHpBar = hud.bar("heroHp", {
-        x: app.screen.width - 226, y: 32, width: 210, height: 12, color: 0xd8382f,
+        x: app.screen.width - 320, y: 42, width: 300, height: 12, color: 0xd8382f,
     });
     const heroXpBar = hud.bar("heroXp", {
-        x: app.screen.width - 226, y: 48, width: 210, height: 5, color: 0xd9b83d,
+        x: app.screen.width - 320, y: 58, width: 300, height: 5, color: 0xd9b83d,
     });
     // Герой ходит по «рядам ног» объектов: между рядами порядок задают
     // контейнеры, внутри ряда героя каждый кадр пересортировывает его zIndex
@@ -325,7 +358,7 @@
     // в лесах водятся пауки и крысы (под кронами группы "trees"), в глубокой
     // воде плавают октопусы (ctrlSwim: вода проходима, суша — стена).
     // Поведение — FSM патруль → погоня → возврат (aggro-радиус, поводок).
-    setStage("расселение врагов…");
+    setStage("расселение врагов…", 0.80);
     await frame();
     const KIND_STATS = {
         goba:    { speed: 120, detect: 130, leash: 280, patrol: 110 },
@@ -396,7 +429,7 @@
     const ENEMY_SHEETS = ["goba", "shaman", "dwarf", "orc", "ogr", "spider", "rat", "octopus"];
     for (let i = 0; i < ENEMY_SHEETS.length; i++) {
         const kind = ENEMY_SHEETS[i];
-        setStage(`расселение врагов… (${kind})`);
+        setStage(`расселение врагов… (${kind})`, 0.80 + (i / ENEMY_SHEETS.length) * 0.15);
         if (i % 4 === 0) await frame();
         enemyKinds[kind] = FILE_MODE
             ? await assets.loadCharacter(`${kind}_64`, EMBED.chars[`${kind}_64`])
@@ -511,7 +544,7 @@
     });
     const debug = createDebug({
         app, addSystem, world, grid: SpatialHashGrid, components: COMPONENTS,
-        layer: worldContainer, overlayPos: { x: 16, y: 32 },
+        layer: worldContainer, overlayPos: { x: 16, y: 48 },
     });
 
     // ===== Сцены: game / pause =====
@@ -574,8 +607,8 @@
     scenes.add("pause", {
         enter() {
             hud.text("pauseLabel", "ПАУЗА", {
-                x: app.screen.width / 2 - 50, y: app.screen.height / 2 - 20,
-                size: 32, color: "#ffee66",
+                x: app.screen.width / 2 - 110, y: app.screen.height / 2 - 45,
+                size: 64, color: "#ffee66",
             });
             debug.info["Сцена"] = "pause";
         },
@@ -585,7 +618,7 @@
         },
     });
     scenes.go("game");
-    hud.removeText("status");
+    loader.destroy({ children: true }); // экран загрузки больше не нужен
 
     console.log(`[game] мир ${W}×${H} сид ${SEED}: объектов ${gen.placements.length}, POI ${gen.pois.length}; ` +
         `персонаж (сущность ${wolfId}) в (${spawn.x | 0}, ${spawn.y | 0}) + врагов ${enemies.length}; рендерер ${app.renderer.name}`);

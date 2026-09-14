@@ -9,6 +9,9 @@
             margin: 0;
             overflow: hidden;
             background-color: #000;
+            /* Курсор игры (images/ui/cur.png, остриё в пикселе 0,0); при
+               недоступности картинки браузер вернёт обычный стрелочный */
+            cursor: url('./images/ui/cur.png') 0 0, auto;
         }
     </style>
     <!-- Отладка в средах без отрисовки (?raf=timeout): requestAnimationFrame на

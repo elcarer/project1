@@ -27,6 +27,17 @@ WOLF_PNG = os.path.join(ENGINE, "images", "sprites", "wolf_64.png")
 WOLF_JSON = os.path.join(ENGINE, "images", "sprites", "wolf_64.json")
 SPRITES_DIR = os.path.join(ENGINE, "images", "sprites")
 PROJECTILES_DIR = os.path.join(ENGINE, "images", "projectiles")
+UI_DIR = os.path.join(ENGINE, "images", "ui")
+
+
+def collect_ui(directory):
+    """Одиночные png интерфейса (курсор, рамки, линии полос) — без манифестов."""
+    ui = {}
+    if os.path.isdir(directory):
+        for fn in sorted(os.listdir(directory)):
+            if fn.endswith(".png"):
+                ui[fn[:-4]] = png_data_url(os.path.join(directory, fn))
+    return ui
 
 
 def collect_sheets(directory):
@@ -71,6 +82,7 @@ def build_embedded_js():
         wolf_manifest = json.load(fh)
     chars = collect_sheets(SPRITES_DIR)
     proj = collect_sheets(PROJECTILES_DIR)
+    ui = collect_ui(UI_DIR)
 
     out = io.StringIO()
     out.write("// СГЕНЕРИРОВАНО scripts/make_embedded_assets.py — вручную не править.\n")
@@ -97,6 +109,10 @@ def build_embedded_js():
         out.write(f'            png: "{ch["png"]}",\n')
         out.write("            manifest: " + json.dumps(ch["manifest"], ensure_ascii=False) + ",\n")
         out.write("        },\n")
+    out.write("    },\n")
+    out.write("    ui: {\n")
+    for base, data_url in ui.items():
+        out.write(f'        "{base}": "{data_url}",\n')
     out.write("    },\n")
     out.write("};\n")
     return out.getvalue()
