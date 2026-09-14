@@ -8,6 +8,7 @@ import base64
 import json
 import re
 import socketserver
+import sys
 from http.server import SimpleHTTPRequestHandler
 from pathlib import Path
 
@@ -57,6 +58,7 @@ class EditorHandler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("127.0.0.1", 8137), EditorHandler) as server:
-        print("Serving on http://127.0.0.1:8137 (no-cache + POST /save)")
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8137
+    with socketserver.TCPServer(("127.0.0.1", port), EditorHandler) as server:
+        print(f"Serving on http://127.0.0.1:{port} (no-cache + POST /save)")
         server.serve_forever()

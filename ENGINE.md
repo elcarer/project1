@@ -13,8 +13,9 @@ ECS-движок 2D-игры на **PixiJS 8.19** без сборщика и з�
 Для разработки удобнее статический HTTP-сервер с запретом кэша:
 
 ```bash
-python nocache-server.py   # отдаёт Cache-Control: no-cache (рекомендуется для разработки)
-# открыть http://127.0.0.1:8137/
+python nocache-server.py      # отдаёт Cache-Control: no-cache, порт по умолчанию 8137
+python nocache-server.py 8791 # порт можно передать аргументом
+# открыть http://127.0.0.1:8137/ (или указанный порт)
 ```
 
 ⚠️ Обычный `python -m http.server` не шлёт заголовков кэширования — браузер может отдавать
@@ -24,8 +25,14 @@ python nocache-server.py   # отдаёт Cache-Control: no-cache (рекоме�
 Весь движок подключён классическими `<script>`-тегами в dual-mode (файлы без
 `import/export`, глобали через `globalThis` — см. «Модули»), поэтому страницы работают
 и с `file://`. Для ассетов игры на `file://` есть вшитая копия `scripts/embedded_assets.js`
-(тайлсеты + оборотень; генерируется `scripts/make_embedded_assets.py`, по http не
-используется — живые файлы с диска).
+(тайлсеты + оборотень; по http не используется — живые файлы с диска).
+
+**Пересборка ассетов после правок PNG/JSON в `images/`** — один скрипт на всё:
+`python images/rebuild_registry.py` (сухой прогон — `--check`). Он проверяет все
+запечённые места и обновляет только изменившиеся: реестр объектов
+(`images/objects/objects_data.js`), вшитые ассеты игры для file://
+(`scripts/embedded_assets.js` — тайлсеты + wolf_64) и вшитые тайлсеты редактора
+карт (`EMBEDDED_TILESETS` в `dualgrid_editor.html`).
 
 ## Структура файлов
 
@@ -461,8 +468,10 @@ APPEND-ONLY: существующие PNG и записи реестра ник�
   (P-квантизация PNG портит полупрозрачность tRNS, поэтому WebP). Для игр на http
   текстуры грузятся обычными путями из `images/objects/`. Редактор читает ТОЛЬКО
   data-URL: после ручных правок PNG пересоберите реестр —
-  `python images/rebuild_registry.py` (перекодирует PNG в data-URL, метаданные
-  сохраняет; `--check` — только отчёт о различиях; записи, чей PNG удалён
+  `python images/rebuild_registry.py` (это ЕДИНЫЙ пересборщик: помимо реестра
+  обновляет `scripts/embedded_assets.js` и `EMBEDDED_TILESETS` редактора карт —
+  все места, куда файлы из `images/` вшиты в код; перекодирует PNG в data-URL,
+  метаданные сохраняет; `--check` — только отчёт о различиях; записи, чей PNG удалён
   с диска, вычёркиваются по умолчанию, `--noprune` оставляет их со старым
   data-URL — тогда в движке на http текстура по пути окажется битой).
 - **Чистка фона**: кеинг листов оставляет по контуру мат (полупрозрачная
@@ -872,6 +881,13 @@ window.__TEST    // полигон game.js: счёт, health, camera, scheduler,
   `make_embedded_assets.py`: тайлсеты PNG + оборотень WebP-lossless data-URL —
   картинки с диска на `file://` чужой origin для GPU). `game.js` — классический
   скрипт (IIFE).
+- **2026-09-14** — `images/rebuild_registry.py` стал ЕДИНЫМ пересборщиком
+  запечённых ассетов: помимо реестра объектов обновляет `scripts/embedded_assets.js`
+  (игра на file://) и вшитые тайлсеты редактора (`EMBEDDED_TILESETS` в
+  `dualgrid_editor.html`) — только реально изменившиеся места. Повод: правка
+  волка не попадала в игру — пересборщик трогал только реестр объектов, а волк
+  на file:// живёт в embedded_assets.js. `nocache-server.py` принимает порт
+  аргументом (`python nocache-server.py 8791`).
 
 
 ## Известные ограничения и идеи на будущее

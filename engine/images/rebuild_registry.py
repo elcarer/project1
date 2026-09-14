@@ -1,15 +1,21 @@
 # -*- coding: utf-8 -*-
-"""rebuild_registry.py — пересборка objects/objects_data.js из PNG на диске.
+"""rebuild_registry.py — единый пересборщик ассетов, запечённых в код из images/.
 
-Редактор берёт текстуры объектов из data-URL внутри objects_data.js, поэтому
-правки PNG-файлов вручную (Photoshop/Aseprite/…) до пересборки в редакторе не
-видны. Скрипт перечитывает каждый PNG из images/objects/, кодирует его заново
-(WebP lossless — как в скриптах вырезки) и переписывает реестр, сохраняя
-метаданные (ru/group/cells/weight/pass) из старого файла. Ничего на диске,
-кроме objects_data.js, не меняет.
+Правишь PNG/JSON где-то в images/ — запусти этот скрипт: он проверит ВСЕ места,
+куда файлы из images/ вшиты в код, и обновит только изменившиеся.
+
+  1. images/objects/*.png
+       → images/objects/objects_data.js — реестр объектов (данные читает
+         редактор карт и движок; data-URL WebP lossless)
+  2. images/tiles/*.png + images/sprites/wolf_64.png|.json
+       → scripts/embedded_assets.js — ассеты игры для file://
+         (генерирует scripts/make_embedded_assets.py)
+  3. images/tiles/*.png
+       → блок EMBEDDED_TILESETS в dualgrid_editor.html — тайлсеты по умолчанию
+         в редакторе карт (PNG data-URL, байт-в-байт с файлами на диске)
 
 Запуск:  python rebuild_registry.py [--check] [--noprune]
-         --check — только показать, что изменилось, без записи файла.
+         --check — только показать, что изменилось, без записи файлов.
          --noprune — НЕ вычеркивать объекты, чей PNG удалён с диска
          (по умолчанию такие записи вычёркиваются из реестра).
 """
@@ -21,8 +27,11 @@ import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "objects")
-REG = os.path.join(OUT, "objects_data.js")
+OUT_DIR = os.path.join(HERE, "objects")
+REG = os.path.join(OUT_DIR, "objects_data.js")
+ENGINE = os.path.normpath(os.path.join(HERE, ".."))
+EDITOR_HTML = os.path.join(ENGINE, "dualgrid_editor.html")
+SCRIPTS = os.path.join(ENGINE, "scripts")
 
 
 def data_url(path):
@@ -50,14 +59,13 @@ def load_registry(path):
     return tileSize, densityDefault, items
 
 
-def main():
-    check_only = "--check" in sys.argv
-    prune = "--noprune" not in sys.argv
+def rebuild_registry(check_only, prune):
+    """Шаг 1: objects_data.js из images/objects/*.png."""
     tileSize, densityDefault, items = load_registry(REG)
     changed, kept, missing, resized = [], [], [], []
 
     for it in items:
-        png = os.path.join(OUT, it["file"])
+        png = os.path.join(OUT_DIR, it["file"])
         if not os.path.exists(png):
             missing.append(it["name"])
             continue
@@ -110,6 +118,68 @@ def main():
     print(f"записан {REG} ({os.path.getsize(REG) // 1024} КБ, "
           f"объектов: {len(items)}); "
           f"перезагрузите редактор (Ctrl+F5, если браузер закэшировал)")
+
+
+def sync_embedded_assets(check_only):
+    """Шаг 2: scripts/embedded_assets.js из tiles/ + sprites/wolf_64 (игра на file://)."""
+    sys.path.insert(0, SCRIPTS)
+    import make_embedded_assets as mea
+    fresh = mea.build_embedded_js()
+    try:
+        with open(mea.DST, encoding="utf-8") as fh:
+            current = fh.read()
+    except FileNotFoundError:
+        current = None
+    if current == fresh:
+        print("embedded_assets.js: без изменений")
+        return
+    if check_only:
+        print("embedded_assets.js: УСТАРЕЛ — запустите без --check для записи")
+        return
+    with io.open(mea.DST, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(fresh)
+    print(f"embedded_assets.js: ОБНОВЛЁН ({os.path.getsize(mea.DST) // 1024} КБ) — "
+          f"игра на file:// увидит новые ассеты после перезагрузки страницы")
+
+
+def sync_editor_tilesets(check_only):
+    """Шаг 3: EMBEDDED_TILESETS в dualgrid_editor.html из images/tiles/."""
+    with open(EDITOR_HTML, encoding="utf-8") as fh:
+        text = fh.read()
+    block = re.search(r"const EMBEDDED_TILESETS = \{\n(.*?)\n\};", text, re.S)
+    if not block:
+        print("dualgrid_editor.html: блок EMBEDDED_TILESETS не найден — шаг пропущен")
+        return
+    names = re.findall(r'"([^"]+)":\s*"data:image/png;base64,', block.group(1))
+    if not names:
+        print("dualgrid_editor.html: в EMBEDDED_TILESETS нет тайлсетов — шаг пропущен")
+        return
+    sys.path.insert(0, SCRIPTS)
+    from make_embedded_assets import png_data_url
+    lines, changed = [], []
+    for name in names:
+        url = png_data_url(os.path.join(ENGINE, "images", "tiles", name))
+        lines.append(f'    "{name}": "{url}",')
+    fresh_block = "const EMBEDDED_TILESETS = {\n" + "\n".join(lines) + "\n};"
+    if block.group(0) == fresh_block:
+        print(f"dualgrid_editor.html: тайлсеты ({len(names)}) без изменений")
+        return
+    if check_only:
+        print("dualgrid_editor.html: EMBEDDED_TILESETS УСТАРЕЛ — "
+              "запустите без --check для записи")
+        return
+    with io.open(EDITOR_HTML, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text[:block.start()] + fresh_block + text[block.end():])
+    print(f"dualgrid_editor.html: EMBEDDED_TILESETS ОБНОВЛЁН "
+          f"({len(names)} тайлсетов) — перезагрузите редактор")
+
+
+def main():
+    check_only = "--check" in sys.argv
+    prune = "--noprune" not in sys.argv
+    rebuild_registry(check_only, prune)
+    sync_embedded_assets(check_only)
+    sync_editor_tilesets(check_only)
 
 
 if __name__ == "__main__":
