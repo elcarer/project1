@@ -11,13 +11,35 @@
             background-color: #000;
         }
     </style>
-    <!-- Подключаем ЛОКАЛЬНЫЙ PixiJS -->
+    <!-- ЛОКАЛЬНЫЙ PixiJS -->
     <script src="./dll/pixi.min.js"></script>
-    <!-- Реестр объектов dualgrid (data-URL WebP) — глобаль DUALGRID_OBJECTS для game.js -->
+    <!-- ДВИЖОК в dual-mode (файлы без import/export — глобали): порядок важен.
+         Работает и по http (python nocache-server.py), и двойным кликом с file://
+         (ассеты для file:// вшиты в scripts/embedded_assets.js). -->
+    <script src="./scripts/data/units.js"></script>
+    <script src="./scripts/engine/eventSystem.js"></script>
+    <script src="./scripts/engine/engine.js"></script>
+    <script src="./scripts/engine/modules/math.js"></script>
+    <script src="./scripts/engine/modules/pool.js"></script>
+    <script src="./scripts/engine/modules/scheduler.js"></script>
+    <script src="./scripts/engine/modules/input.js"></script>
+    <script src="./scripts/engine/modules/camera.js"></script>
+    <script src="./scripts/engine/modules/character.js"></script>
+    <script src="./scripts/engine/modules/health.js"></script>
+    <script src="./scripts/engine/modules/fx.js"></script>
+    <script src="./scripts/engine/modules/audio.js"></script>
+    <script src="./scripts/engine/modules/assets.js"></script>
+    <script src="./scripts/engine/modules/hud.js"></script>
+    <script src="./scripts/engine/modules/scenes.js"></script>
+    <script src="./scripts/engine/modules/debug.js"></script>
+    <script src="./scripts/engine/modules/dualgrid.js"></script>
+    <!-- Реестр объектов dualgrid (data-URL WebP) — глобаль DUALGRID_OBJECTS -->
     <script src="./images/objects/objects_data.js"></script>
+    <!-- Вшитые ассеты для file:// (тайлсеты + оборотень; по http не используются) -->
+    <script src="./scripts/embedded_assets.js"></script>
 </head>
 <body>
-    <!-- Игровая логика: движок (scripts/engine/engine.js) подключается из неё сам -->
-    <script src="./scripts/game.js?v=6" type="module"></script>
+    <!-- Игровая логика: классический скрипт, читает глобали движка -->
+    <script src="./scripts/game.js"></script>
 </body>
 </html>

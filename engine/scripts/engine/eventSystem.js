@@ -54,4 +54,8 @@ const EventSystem = {
         }
     }
 };
-export {EventSystem}
+
+// Подключение двумя способами (файл без import/export валиден и как ES-модуль):
+//   1) обычный <script src="..."> — глобали (работает и на file://);
+//   2) import "./файл.js" — глобали ставятся как побочный эффект.
+globalThis.EventSystem = EventSystem;

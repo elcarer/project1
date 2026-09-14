@@ -9,8 +9,6 @@
 //   health.attach(id, 50);                 // выдать 50 HP
 //   health.damage(id, 20);                 // → события unit:damaged
 //   health.damage(id, 100);                // → событие unit:died, сущность удалена
-import { ECS, world, COMPONENTS, events } from "../engine.js";
-import { UNITS_EVENTS } from "../../data/units.js";
 
 // Компоненты регистрируются один раз при первом создании модуля
 const HP_MASK = ECS.registerComponent("hp", Float32Array);
@@ -64,4 +62,8 @@ function createHealth() {
     return { attach, has, get, ratio, damage, heal, kill };
 }
 
-export { createHealth };
+// Подключение двумя способами (файл без import/export валиден и как ES-модуль):
+//   1) обычный <script src="..."> — глобали (работает и на file://);
+//   2) import "./файл.js" — глобали ставятся как побочный эффект.
+// ECS/world/COMPONENTS/events/UNITS_EVENTS приходят глобалями
+globalThis.createHealth = createHealth;

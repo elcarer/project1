@@ -89,4 +89,7 @@ function createDebug({ app, addSystem = null, world = null, grid = null, compone
     return { state, info, toggleOverlay, toggleGrid, toggleHitboxes, update };
 }
 
-export { createDebug };
+// Подключение двумя способами (файл без import/export валиден и как ES-модуль):
+//   1) обычный <script src="..."> — глобали (работает и на file://);
+//   2) import "./файл.js" — глобали ставятся как побочный эффект.
+globalThis.createDebug = createDebug;

@@ -1,5 +1,3 @@
-import { UNIT_CONFIGS, UNITS_EVENTS } from "../data/units.js?v=2";
-import { EventSystem } from "./eventSystem.js?v=2";
 // Единая шина событий движка: спавн/урон/смерть сущностей и т.д.
 // Модули и игровая логика подписываются через events.on(...), ядро — генерирует
 const events = EventSystem;
@@ -725,4 +723,17 @@ async function init() {
         setWorldBounds, // ({x, y, width, height}) или null — границы отскока
     };
 }
-export {ECS, world, COMPONENTS, DATA, COMPONENT_MASKS, SpatialHashGrid, STATIC_SPRITE_POOLS, ANIMATED_SPRITE_POOLS, events, init,  }
+
+// Подключение двумя способами (файл без import/export валиден и как ES-модуль):
+//   1) обычный <script src="..."> — глобали (работает и на file://);
+//   2) import "./файл.js" — глобали ставятся как побочный эффект.
+globalThis.ECS = ECS;
+globalThis.world = world;
+globalThis.COMPONENTS = COMPONENTS;
+globalThis.DATA = DATA;
+globalThis.COMPONENT_MASKS = COMPONENT_MASKS;
+globalThis.SpatialHashGrid = SpatialHashGrid;
+globalThis.STATIC_SPRITE_POOLS = STATIC_SPRITE_POOLS;
+globalThis.ANIMATED_SPRITE_POOLS = ANIMATED_SPRITE_POOLS;
+globalThis.events = events;
+globalThis.init = init;

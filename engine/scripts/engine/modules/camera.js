@@ -8,9 +8,16 @@
 //   camera.follow(playerSprite);        // плавно следовать
 //   camera.shake(10, 0.4);              // тряска при взрыве
 //   camera.zoomBy(1.25);                // приблизить
-import { clamp, damp } from "./math.js";
+// Хелперы — ВНУТРИ фабрики: верхний лексический уровень у классических
+// <script>-ов страницы общий, дубликат `const clamp` из соседнего файла
+// убил бы этот файл SyntaxError-ом.
 
 function createCamera({ app, container, addSystem }) {
+    // Ограничение значения диапазоном
+    const clamp = (value, min, max) => (value < min ? min : (value > max ? max : value));
+    // Кадронезависимое приближение (стабильно при любом FPS)
+    const damp = (current, target, damping, deltaSeconds) =>
+        current + (target - current) * (1 - Math.exp(-damping * deltaSeconds));
     const cam = {
         x: 0, y: 0,          // центр взгляда в мировых координатах
         zoom: 1,
@@ -86,4 +93,7 @@ function createCamera({ app, container, addSystem }) {
     return { cam, follow, stopFollowing, centerOn, setBounds, setZoom, zoomBy, shake, screenToWorld, update };
 }
 
-export { createCamera };
+// Подключение двумя способами (файл без import/export валиден и как ES-модуль):
+//   1) обычный <script src="..."> — глобали (работает и на file://);
+//   2) import "./файл.js" — глобали ставятся как побочный эффект.
+globalThis.createCamera = createCamera;

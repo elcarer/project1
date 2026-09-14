@@ -61,4 +61,7 @@ function createScenes({ addSystem = null, onUpdateError = null } = {}) {
     return { add, go, is, update, get current() { return currentName; } };
 }
 
-export { createScenes };
+// Подключение двумя способами (файл без import/export валиден и как ES-модуль):
+//   1) обычный <script src="..."> — глобали (работает и на file://);
+//   2) import "./файл.js" — глобали ставятся как побочный эффект.
+globalThis.createScenes = createScenes;

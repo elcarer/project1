@@ -81,4 +81,7 @@ function createAudio() {
     return { unlock, isReady, tone, noise, register, play, setVolume, get volume() { return masterVolume; } };
 }
 
-export { createAudio };
+// Подключение двумя способами (файл без import/export валиден и как ES-модуль):
+//   1) обычный <script src="..."> — глобали (работает и на file://);
+//   2) import "./файл.js" — глобали ставятся как побочный эффект.
+globalThis.createAudio = createAudio;

@@ -50,4 +50,16 @@ function angleTo(x1, y1, x2, y2) {
     return Math.atan2(y2 - y1, x2 - x1);
 }
 
-export { TAU, clamp, lerp, damp, rand, randInt, randAngle, distSq, dist, angleTo };
+// Подключение двумя способами (файл без import/export валиден и как ES-модуль):
+//   1) обычный <script src="..."> — глобали (работает и на file://);
+//   2) import "./файл.js" — глобали ставятся как побочный эффект.
+globalThis.TAU = TAU;
+globalThis.clamp = clamp;
+globalThis.lerp = lerp;
+globalThis.damp = damp;
+globalThis.rand = rand;
+globalThis.randInt = randInt;
+globalThis.randAngle = randAngle;
+globalThis.distSq = distSq;
+globalThis.dist = dist;
+globalThis.angleTo = angleTo;

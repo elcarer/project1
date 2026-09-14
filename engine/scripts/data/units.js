@@ -16,4 +16,9 @@ const UNITS_EVENTS = {
     LEVEL_UP: 'unit:levelUp',
     HEALTH_CHANGED: 'unit:healthChanged'
 };
-export {UNIT_CONFIGS, UNITS_EVENTS}
+
+// Подключение двумя способами (файл без import/export валиден и как ES-модуль):
+//   1) обычный <script src="..."> — глобали (работает и на file://);
+//   2) import "./файл.js" — глобали ставятся как побочный эффект.
+globalThis.UNIT_CONFIGS = UNIT_CONFIGS;
+globalThis.UNITS_EVENTS = UNITS_EVENTS;

@@ -26,7 +26,9 @@
 //   const id = chars.spawn({ x, y, sprite, anims, speed: 150, fps: 8 });
 //   chars.update(ticker);            // каждый кадр игровой сцены (на паузе — замирает)
 //   chars.playAttack(id);            // Space: одиночная атака в сторону взгляда
-import { clamp } from "./math.js";
+// ВАЖНО (классический <script>): хелперы объявляются ВНУТРИ фабрик — верхний
+// лексический уровень у всех скриптов страницы общий, и второй `const clamp`
+// (например, как в camera.js) убил бы весь файл SyntaxError-ом.
 
 const DIRS = ["up", "down", "left", "right"];
 const DIR_INDEX = { up: 0, down: 1, left: 2, right: 3 };
@@ -45,7 +47,7 @@ const KEY_DIRS = {
 // ── УСТРОЙСТВО ВВОДА (клавиатура + джойстик) ────────────────────────────────
 // Синглтон-устройство, не компонент: физические кнопки общие для всех персонажей
 // локальной игры. даёт вектор осей и «взгляд» (последнее нажатое направление).
-export function createCharacterInput({ target = window } = {}) {
+function createCharacterInput({ target = window } = {}) {
     // Зажатые КОДЫ по направлениям: W и ArrowUp держат «up» вместе — направление
     // отпускается только когда отпущены ВСЕ его клавиши
     const held = { up: new Set(), down: new Set(), left: new Set(), right: new Set() };
@@ -142,8 +144,10 @@ export function createCharacterInput({ target = window } = {}) {
 // ── СИСТЕМА ПЕРСОНАЖЕЙ ──────────────────────────────────────────────────────
 // blocked(px, py) => true — точка мира (пиксели) непроходима: клетки объектов,
 // вода, границы карты. Скорость в ПИКСЕЛЯХ В СЕКУНДУ (как у камеры — от deltaMS).
-export function createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, input, addSystem = null }) {
+function createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, input, addSystem = null }) {
     if (!blocked || !input) throw new Error("createCharacterSystem: нужны blocked и input");
+    // Ограничение значения диапазоном (локально — см. памятку про <script> выше)
+    const clamp = (value, min, max) => (value < min ? min : (value > max ? max : value));
     // Свои компоненты поверх ядра (повторная регистрация идемпотентна)
     ECS.registerComponent("ctrlSpeed", Float32Array);
     ECS.registerComponent("ctrlHalfW", Float32Array);
@@ -270,3 +274,9 @@ export function createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, i
 
     return { spawn, remove, update, play, playAttack, facingName };
 }
+
+// Подключение двумя способами (файл без import/export валиден и как ES-модуль):
+//   1) обычный <script src="..."> — глобали (работает и на file://);
+//   2) import "./файл.js" — глобали ставятся как побочный эффект.
+globalThis.createCharacterInput = createCharacterInput;
+globalThis.createCharacterSystem = createCharacterSystem;

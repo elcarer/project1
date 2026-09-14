@@ -5,8 +5,6 @@
 //   const fx = createFX({ app, layer: engine.worldContainer, addSystem });
 //   fx.burst(x, y, { count: 20, color: 0xff8833, speed: 200 });   // взрыв
 //   fx.text(x, y, "-15", { color: "#ff5555" });                    // цифра урона
-import { createPool } from "./pool.js";
-import { TAU, rand } from "./math.js";
 
 function createFX({ app, layer, addSystem }) {
     // Одна текстура на все частицы: белый круг, цвет задаётся tint (без перегенерации)
@@ -125,4 +123,8 @@ function createFX({ app, layer, addSystem }) {
     return { burst, text, update, get activeCount() { return activeParticles.length + activeTexts.length; }, pools: { particlePool, textPool } };
 }
 
-export { createFX };
+// Подключение двумя способами (файл без import/export валиден и как ES-модуль):
+//   1) обычный <script src="..."> — глобали (работает и на file://);
+//   2) import "./файл.js" — глобали ставятся как побочный эффект.
+// createPool/TAU/rand приходят глобалями (script-порядок: math, pool до fx)
+globalThis.createFX = createFX;
