@@ -52,8 +52,9 @@ function createProjectiles({ world, ECS, COMPONENTS, DATA, addSystem = null,
 
     // ── ПОРОЖДЕНИЕ снаряда атакой ──────────────────────────────────────────
     // type — ключ ATTACK_CONFIGS; dir — направление (строка анимации листа);
-    // vx/vy — скорость полёта; возвращает id сущности (или null при ошибке).
-    function spawn({ type, dir = "front", x, y, vx, vy, lifetime }) {
+    // vx/vy — скорость полёта (melee передаёт 0/0 и once: true);
+    // возвращает id сущности (или null при ошибке).
+    function spawn({ type, dir = "front", x, y, vx, vy, lifetime, once = false }) {
         const t = TYPES[type];
         if (!t) return null;
         const animName = t.anims[dir] ? dir : "all";
@@ -64,7 +65,7 @@ function createProjectiles({ world, ECS, COMPONENTS, DATA, addSystem = null,
         }
         sprite.textures = t.anims[animName];
         sprite.visible = true;
-        sprite.loop = true; // прокручивается, пока летит
+        sprite.loop = !once; // ranged прокручивается, пока летит; melee — один раз
         sprite.gotoAndPlay(0);
         const id = ECS.addEntity(world);
         ECS.addComponent(world, id, "positionX", x);
@@ -103,12 +104,14 @@ function createProjectiles({ world, ECS, COMPONENTS, DATA, addSystem = null,
         ECS.removeEntity(world, id);
     }
 
-    // ── КАДР СИСТЕМЫ: выпуск атаками → полёт → истечение времени жизни ─────
+// ── КАДР СИСТЕМЫ: выпуск атаками → полёт → истечение времени жизни ─────
     function update(ticker) {
         const dt = clamp((ticker && ticker.deltaMS) || 1000 / 60, 0, 50) / 1000;
 
         // 1) Атаки: персонаж с привязкой играет attack_* — на кадре spawnTick
-        //    выпускаем снаряд в сторону взгляда (один раз за атаку)
+        //    выпускаем снаряд в сторону взгляда (один раз за атаку).
+        //    melee — эффект ПЕРЕД персонажем без движения, однократно
+        //    (время жизни = длительность анимации); ranged — летит по vx/vy.
         const entities = world.queries.characters.entities;
         for (let k = entities.length - 1; k >= 0; k--) {
             const id = entities[k];
@@ -125,19 +128,27 @@ function createProjectiles({ world, ECS, COMPONENTS, DATA, addSystem = null,
             const dir = anim.slice("attack_".length);
             const v = DIR_VECTORS[dir] || DIR_VECTORS.front;
             const cfg = globalThis.ATTACK_CONFIGS[b.attack];
+            const t = TYPES[b.attack];
+            const melee = cfg.kind === "melee";
             const px = COMPONENTS.positionX[id], py = COMPONENTS.positionY[id];
             b.fired = 1;
+            // melee: анимация однократно — живём ровно её длину
+            const animName = t.anims[dir] ? dir : "all";
+            const lifetime = melee
+                ? t.anims[animName].length / (cfg.fps || 8)
+                : b.lifetime;
             spawn({
                 type: b.attack, dir,
                 x: px + v[0] * 12,
                 y: py - 16 + v[1] * 10, // из «груди» персонажа, чуть впереди
-                vx: v[0] * cfg.speed,
-                vy: v[1] * cfg.speed,
-                lifetime: b.lifetime,
+                vx: melee ? 0 : v[0] * cfg.speed,
+                vy: melee ? 0 : v[1] * cfg.speed,
+                lifetime,
+                once: melee,
             });
         }
 
-        // 2) Полёт и время жизни
+        // 2) Полёт и время жизни (melee стоит на месте — движутся только ranged)
         for (const id of ACTIVE) {
             const p = PROJ[id];
             p.life -= dt;

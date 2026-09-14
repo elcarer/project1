@@ -49,7 +49,7 @@
 
     // ===== HUD: подсказка + статус загрузки =====
     const hud = createHUD({ app });
-    hud.text("hint", "WASD/стрелки/джойстик — движение | пробел — атака | колесо — зум | P — пауза", {
+    hud.text("hint", "WASD/стрелки/джойстик — движение | атака автоматическая | колесо — зум | P — пауза", {
         x: 16, y: 12, size: 12, color: "#88ffcc",
     });
     hud.text("status", "загрузка…", { x: 16, y: 32, size: 14, color: "#ffee66" });
@@ -299,6 +299,10 @@
         rat:     { speed: 140, detect: 110, leash: 220, patrol: 80 },
         octopus: { speed: 100, detect: 110, leash: 200, patrol: 80, swim: true },
     };
+    // «Зона достижимости оружия» (reach из ATTACK_CONFIGS) — дистанция,
+    // на которой враг останавливается и атакует
+    const weaponReach = (kind) =>
+        ATTACK_CONFIGS[CHARACTER_ATTACKS[kind].attack].reach;
     const ai = createEnemyAI({
         world, ECS, COMPONENTS, DATA, addSystem, characters,
         blocked,
@@ -329,7 +333,7 @@
         });
         ECS.addComponent(world, id, "cullPad", ch.size);
         if (st.swim) ECS.addComponent(world, id, "ctrlSwim", 1);
-        ai.register(id, { detectR: st.detect, leashR: st.leash, patrolR: st.patrol });
+        ai.register(id, { detectR: st.detect, leashR: st.leash, patrolR: st.patrol, attackR: weaponReach(kind) });
         creatureRowTrack.push({ sprite, id });
         creatureRowCache.push(-1);
         projectiles.bind(id, kind);
@@ -460,6 +464,10 @@
 
     // ===== Сцены: game / pause =====
     const scenes = createScenes({ addSystem });
+    // Автоатака героя: враг в «зоне достижимости оружия» (reach атаки героя)
+    // бьётся сам, без клавиши; кулдаун между взмахами
+    const heroReach = ATTACK_CONFIGS[CHARACTER_ATTACKS.wolf.attack].reach;
+    let heroAtkCd = 0;
     scenes.add("game", {
         enter() {
             hud.removeText("pauseLabel");
@@ -467,9 +475,21 @@
         },
         update(ticker) {
             characters.update(ticker); // ввод → коллизии/скольжение → анимация (по компонентам)
-            // Пробел — одиночная атака героя в сторону взгляда: контроллер
-            // играет attack_*, модуль снарядов выпускает снаряд на spawnTick
-            if (input.wasPressed("Space")) characters.playAttack(wolfId);
+            const dt = (ticker && ticker.deltaMS || 1000 / 60) / 1000;
+            heroAtkCd -= dt;
+            if (heroAtkCd <= 0 && !COMPONENTS.ctrlLock[wolfId]) {
+                const px = COMPONENTS.positionX[wolfId], py = COMPONENTS.positionY[wolfId];
+                const r2 = heroReach * heroReach;
+                for (let i = 0; i < enemies.length; i++) {
+                    const dx = COMPONENTS.positionX[enemies[i].id] - px;
+                    const dy = COMPONENTS.positionY[enemies[i].id] - py;
+                    if (dx * dx + dy * dy <= r2) {
+                        characters.playAttack(wolfId); // снаряд выпустит модуль projectiles
+                        heroAtkCd = 0.9;
+                        break;
+                    }
+                }
+            }
             // Колесо — зум (вверх — ближе); отдаление ограничено окном тайлов
             if (input.pointer.wheel !== 0) {
                 camera.zoomBy(1 - input.pointer.wheel * 0.1);

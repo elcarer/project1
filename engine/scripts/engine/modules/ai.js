@@ -25,7 +25,6 @@ const AI_STATE_NAMES = ["patrol", "chase", "return"];
 const CHASE_BOOST = 1.25;   // скорость погони относительно базовой
 const ARRIVE = 8;           // «дошёл до waypoint», px
 const HOME_ARRIVE = 24;     // «вернулся домой», px
-const ATTACK_RANGE = 36;    // с какого расстояния враг атакует стоя
 const ATTACK_CD = 1.4;      // перезарядка атаки, сек
 const WP_BUDGET = 8;        // сек на обход недостижимого waypoint
 
@@ -49,12 +48,14 @@ function createEnemyAI({ world, ECS, COMPONENTS, addSystem = null,
     }
 
     // Регистрация заспавненного персонажа как врага (дом = текущая позиция)
-    function register(id, { detectR = 140, leashR = 300, patrolR = 110 } = {}) {
+    // attackR — «зона достижимости оружия»: дистанция остановки и атаки
+    function register(id, { detectR = 140, leashR = 300, patrolR = 110, attackR = 40 } = {}) {
         ECS.addComponent(world, id, "aiState", AI_PATROL);
         ECS.addComponent(world, id, "aiHomeX", COMPONENTS.positionX[id]);
         ECS.addComponent(world, id, "aiHomeY", COMPONENTS.positionY[id]);
         STATE[id] = {
             detect: detectR, leash: leashR, patrol: patrolR,
+            attackR,
             speed0: COMPONENTS.ctrlSpeed[id],
             atkCd: 0,
             t: 0.5 + Math.random() * 2, // старт патруля вразнобой
@@ -147,8 +148,8 @@ function createEnemyAI({ world, ECS, COMPONENTS, addSystem = null,
                         drive(id, 0, 0);
                         break;
                     }
-                    if (dd <= ATTACK_RANGE) {
-                        // Держим дистанцию боя: стоим и атакуем с перезарядкой
+                    if (dd <= s.attackR) {
+                        // В зоне достижимости оружия: стоим и атакуем с перезарядкой
                         drive(id, 0, 0);
                         if (s.atkCd <= 0 && !COMPONENTS.ctrlLock[id]) {
                             characters.playAttack(id);
