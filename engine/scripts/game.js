@@ -84,18 +84,22 @@
     }
     const loader = new PIXI.Container();
     const barFrame = new PIXI.Sprite(uiTex.bar);
-    const barLine = new PIXI.Sprite(uiTex.line);
+    // Линия загрузки — отдельная Texture на том же source со СВОИМ кадром:
+    // заполнение = ширина кадра (Graphics-маска в v8 линии не отсекает — ловушка;
+    // у текстур из PIXI.Assets в локальном билде нет .clone() — потому new Texture)
+    const barLineTex = new PIXI.Texture({
+        source: uiTex.line.source,
+        frame: new PIXI.Rectangle(0, 0, uiTex.line.width, uiTex.line.height),
+    });
+    const barLine = new PIXI.Sprite(barLineTex);
     barLine.position.set(46, 20); // внутреннее окно рамки 407×64 → линия 315×24
-    const barMask = new PIXI.Graphics();
-    barMask.renderable = false; // служит маской линии загрузки
-    barLine.mask = barMask;
     const barLabel = new PIXI.Text({
         text: "загрузка…",
         style: { fontFamily: GAME_FONT, fontSize: 24, fill: "#e8d5a0" },
     });
     barLabel.anchor.set(0.5, 0); // метка по центру под рамкой
     barLabel.position.set(barFrame.width / 2, barFrame.height + 14);
-    loader.addChild(barFrame, barMask, barLine, barLabel);
+    loader.addChild(barFrame, barLine, barLabel);
     loader.position.set(
         Math.round((app.screen.width - barFrame.width) / 2),
         Math.round(app.screen.height / 2 - barFrame.height / 2),
@@ -105,7 +109,8 @@
     const setStage = (s, r) => {
         if (typeof r === "number") loadRatio = r;
         barLabel.text = s;
-        barMask.clear().rect(46, 20, Math.max(0.001, 315 * loadRatio), 24).fill(0xffffff);
+        barLineTex.frame.width = Math.max(0.001, Math.round(315 * loadRatio));
+        barLineTex.update();
     };
 
     // ===== Текстуры тайлсетов =====
@@ -332,16 +337,22 @@
     const makeSpriteBar = (frameTex, lineTex, linePos, lineSize) => {
         const root = new PIXI.Container();
         const frame = new PIXI.Sprite(frameTex);
-        const line = new PIXI.Sprite(lineTex);
+        // Линия — отдельная Texture на том же source со СВОИМ кадром: заполнение =
+        // ширина кадра, линия растёт слева направо, левый торец сохраняется
+        const lineTexOwned = new PIXI.Texture({
+            source: lineTex.source,
+            frame: new PIXI.Rectangle(0, 0, lineTex.width, lineTex.height),
+        });
+        const fullW = lineTexOwned.frame.width, fullH = lineTexOwned.frame.height;
+        const line = new PIXI.Sprite(lineTexOwned);
         line.position.set(linePos[0], linePos[1]);
-        const mask = new PIXI.Graphics();
-        mask.renderable = false; // служит маской заливки
-        line.mask = mask;
-        root.addChild(frame, mask, line);
+        line.scale.set(lineSize[0] / fullW, lineSize[1] / fullH); // вписана в окно рамки
+        root.addChild(frame, line);
         let ratio = 1;
-        const draw = () => mask.clear()
-            .rect(linePos[0], linePos[1], Math.max(0.001, lineSize[0] * ratio), lineSize[1])
-            .fill(0xffffff);
+        const draw = () => {
+            lineTexOwned.frame.width = Math.max(0.001, Math.round(fullW * ratio));
+            lineTexOwned.update();
+        };
         draw();
         return { root, set(r) { ratio = Math.max(0, Math.min(1, r)); draw(); } };
     };
