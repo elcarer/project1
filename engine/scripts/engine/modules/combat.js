@@ -5,6 +5,10 @@
 // endurance/move/cdrAbility/cdrAttack/spellPower/xpBoost/counterMagic).
 // Удар разрешается цепочкой: уклонение (весь урон мимо) → крит (×мощь крита,
 // со 150%) → блок (половина урона) → вычет ХП → смерть/контратака.
+// Особые способности врагов (special — ENEMY_STATS, data/stats.js; бестиарий
+// data/enemies.js): stoneskin — кап урона за удар; poison — атака накладывает
+// тление (1 урона/с); call — событие «получен урон» (колбэк onDamaged, в
+// game.js поднимает соратников через ai.alert).
 //
 // Попадания приходят ОТ СНАРЯДОВ: атака персонажа на кадре spawnTick выпускает
 // снаряд (modules/projectiles.js), при выпуске снаряд получает снимок боевых
@@ -28,9 +32,11 @@
 
 const MELEE_HIT_R = 40;    // радиус разового АоЕ оружия ближнего боя (px)
 const RESPAWN_DELAY = 2.5; // секунд до возрождения героя
+const POISON_TICK = 1.0;   // яд тикает раз в секунду (1 урона за тик)
 
 function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
-                        characters, projectiles, fx, onRemove = null, onKill = null }) {
+                        characters, projectiles, fx, onRemove = null, onKill = null,
+                        onDamaged = null }) {
     if (!characters || !projectiles || !fx) throw new Error("createCombat: нужны characters, projectiles и fx");
     const clamp = (v, lo, hi) => (v < lo ? lo : (v > hi ? hi : v));
     // ХП — существующие компоненты health.js (повторная регистрация идемпотентна)
@@ -45,17 +51,22 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
 
     // ── ВЫДАЧА РОЛЕВЫХ СТАТОВ — вызывать после characters.spawn ─────────────
     // Скорость спавна считается базовой (100%); подвижность добавляет проценты.
+    // special — особые способности вида (ENEMY_STATS.special, data/stats.js):
+    // { call, stoneskin, poison, ... } — см. data/enemies.js.
     function init(id, { faction = 1, hero = false, lvl = 1, prim,
-                        growth = null, weaponMin = 1, xpReward = 0, size = 64 }) {
+                        growth = null, weaponMin = 1, xpReward = 0, size = 64,
+                        special = null }) {
         const p = { str: prim.str, agi: prim.agi, vit: prim.vit, spd: prim.spd, wis: prim.wis };
         const dop = calcDop(p);
         STAT[id] = {
             hero, lvl, xp: 0, xpReward, prim: p,
             growth: growth ? { ...growth } : null,
-            weaponMin, dop,
+            weaponMin, dop, special,
             baseSpeed: COMPONENTS.ctrlSpeed[id], // скорость спавна = 100%
             size, dead: false, deathDone: false, respawnT: 0, fadeIn: 0,
             flashT: 0, ctrGuardT: 0, bar: null,
+            // яд: poisonT — сколько секунд тлеть, poisonSrc — кто отравил
+            poisonT: 0, poisonTick: 0, poisonSrc: null,
         };
         FACTION[id] = faction;
         ECS.addComponent(world, id, "hp", dop.hpMax);
@@ -147,10 +158,23 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
         // Блок — шанс получить лишь половину урона
         const blocked = Math.random() * 100 < d.block;
         if (blocked) dmg = Math.max(1, Math.floor(dmg / 2));
+        // Каменная кожа цели: один удар не наносит больше special.stoneskin
+        // (образец: orc «Один удар не наносит ему больше 12 урона»)
+        if (t.special && t.special.stoneskin) dmg = Math.min(dmg, t.special.stoneskin);
         COMPONENTS.hp[targetId] = Math.max(0, COMPONENTS.hp[targetId] - dmg);
         floatText(targetId, crit ? `${dmg}!` : String(dmg),
             crit ? "#ffc531" : blocked ? "#9aa4ad" : "#ffffff",
             crit ? 28 : 22, crit ? 1.1 : 0.8);
+        // Отравление: атаки носителя special.poison накладывают тление
+        // (образец: паук «Атаки отравляют героя»; значение = секунд по 1 урона)
+        if (dmg > 0 && COMPONENTS.hp[targetId] > 0 && STAT[attackerId]
+            && STAT[attackerId].special && STAT[attackerId].special.poison) {
+            t.poisonT = Math.max(t.poisonT, STAT[attackerId].special.poison);
+            t.poisonTick = POISON_TICK;
+            t.poisonSrc = attackerId;
+        }
+        // Событие «получен урон» (выжил): зов соратников у гоблинов и т.п.
+        if (COMPONENTS.hp[targetId] > 0 && onDamaged) onDamaged(targetId, attackerId, dmg);
         // Вспышка попадания
         t.flashT = 0.12;
         const sprite = DATA.spriteMap[targetId];
@@ -342,6 +366,23 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
                 s.fadeIn = Math.max(0, s.fadeIn - dt * 1.5);
                 const sp = DATA.spriteMap[id];
                 if (sp) sp.alpha = 1 - s.fadeIn;
+            }
+            // Яд: раз в секунду снимает 1 ХП (зелёная цифра); может убить —
+            // убийство засчитывается отравившему (awardKill в death)
+            if (s.poisonT > 0 && !s.dead) {
+                s.poisonT -= dt;
+                s.poisonTick -= dt;
+                if (s.poisonTick <= 0) {
+                    s.poisonTick += POISON_TICK;
+                    COMPONENTS.hp[id] = Math.max(0, COMPONENTS.hp[id] - 1);
+                    floatText(id, "1", "#7fd84f", 20, 0.7);
+                    updateBar(id);
+                    if (COMPONENTS.hp[id] <= 0) {
+                        const src = s.poisonSrc;
+                        s.poisonT = 0;
+                        death(id, src);
+                    }
+                }
             }
             if (!s.dead) continue;
             if (s.hero) {

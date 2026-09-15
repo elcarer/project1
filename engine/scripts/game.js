@@ -444,6 +444,13 @@
             const en = enemies.find((e) => e.id === victimId);
             if (en) quests.notifyKill(en.name);
         },
+        // «Получив урон, зовёт соратников» — особая способность гоблина
+        // (special.call, ENEMY_STATS): соратники в радиусе N клеток бросают
+        // патруль и бегут на героя
+        onDamaged(victimId) {
+            const sp = combat.stat(victimId) && combat.stat(victimId).special;
+            if (sp && sp.call) ai.alert(COMPONENTS.positionX[victimId], COMPONENTS.positionY[victimId], sp.call * TS);
+        },
     });
     const wolfId = characters.spawn({
         x: spawn.x, y: spawn.y, sprite: wolfSprite, anims: wolf.animations,
@@ -536,11 +543,13 @@
     };
     // «Зона достижимости оружия» (reach из ATTACK_CONFIGS) — дистанция атаки ИИ.
     // Ближний бой подходит БЛИЖЕ (0.6·reach): эффект оружия бьёт перед взглядом,
-    // на диагональной дистанции reach он не достаёт до цели
+    // на диагональной дистанции reach он не достаёт до цели. Темп атак — cd
+    // атаки из образца (ATTACK_CONFIGS.cd).
     const weaponAttackR = (kind) => {
         const cfg = ATTACK_CONFIGS[CHARACTER_ATTACKS[kind].attack];
         return cfg.kind === "melee" ? cfg.reach * 0.6 : cfg.reach;
     };
+    const weaponAttackCd = (kind) => ATTACK_CONFIGS[CHARACTER_ATTACKS[kind].attack].cd || 1.4;
     const ai = createEnemyAI({
         world, ECS, COMPONENTS, DATA, addSystem, characters,
         blocked,
@@ -571,11 +580,12 @@
         });
         ECS.addComponent(world, id, "cullPad", ch.size);
         if (st.swim) ECS.addComponent(world, id, "ctrlSwim", 1);
-        ai.register(id, { detectR: st.detect, leashR: st.leash, patrolR: st.patrol, attackR: weaponAttackR(kind) });
+        ai.register(id, { detectR: st.detect, leashR: st.leash, patrolR: st.patrol, attackR: weaponAttackR(kind), attackCd: weaponAttackCd(kind) });
         creatureRowTrack.push({ sprite, id });
         creatureRowCache.push(-1);
         projectiles.bind(id, kind);
-        // Ролевые статы вида (data/stats.js) с лёгкой индивидуальной разброской
+        // Ролевые статы вида (data/stats.js) с лёгкой индивидуальной разброской;
+        // special — особые способности вида (зов/каменная кожа/яд — combat.js)
         const es = ENEMY_STATS[kind];
         const v = (base) => base + ((Math.random() * 2) | 0);
         combat.init(id, {
@@ -584,7 +594,7 @@
                 str: v(es.prim.str), agi: v(es.prim.agi), vit: v(es.prim.vit),
                 spd: v(es.prim.spd), wis: v(es.prim.wis),
             },
-            weaponMin: es.weaponMin, xpReward: es.xp,
+            weaponMin: es.weaponMin, xpReward: es.xp, special: es.special || null,
         });
         enemies.push({ name: kind, id, size: ch.size });
     }

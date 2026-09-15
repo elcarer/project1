@@ -70,13 +70,17 @@ const HERO_BASE = {
 
 // Враги: уровень, основные статы, минимальный урон и награда опытом.
 // game.js при спавне добавляет индивидуальную разброску +0..1 к каждому стату.
+// special — особые способности из образца (полный бестиарий с описаниями —
+// ENEMY_BESTIARY, data/enemies.js): call (зов соратников, радиус в клетках),
+// stoneskin (кап урона за удар), poison (сек яда по 1 урона/с) — механики
+// активны в modules/combat.js.
 const ENEMY_STATS = {
-    goba:    { lvl: 1, prim: { str: 3, agi: 3, vit: 3, spd: 4, wis: 1 }, weaponMin: 1, xp: 8 },
+    goba:    { lvl: 1, prim: { str: 3, agi: 3, vit: 3, spd: 4, wis: 1 }, weaponMin: 1, xp: 8,  special: { call: 8 } },
     shaman:  { lvl: 3, prim: { str: 4, agi: 4, vit: 4, spd: 3, wis: 6 }, weaponMin: 2, xp: 20 },
     dwarf:   { lvl: 2, prim: { str: 5, agi: 2, vit: 5, spd: 2, wis: 1 }, weaponMin: 2, xp: 12 },
-    orc:     { lvl: 3, prim: { str: 6, agi: 3, vit: 5, spd: 3, wis: 1 }, weaponMin: 2, xp: 16 },
+    orc:     { lvl: 3, prim: { str: 6, agi: 3, vit: 5, spd: 3, wis: 1 }, weaponMin: 2, xp: 16, special: { stoneskin: 12 } },
     ogr:     { lvl: 5, prim: { str: 9, agi: 2, vit: 9, spd: 2, wis: 2 }, weaponMin: 3, xp: 35 },
-    spider:  { lvl: 2, prim: { str: 4, agi: 4, vit: 3, spd: 4, wis: 1 }, weaponMin: 1, xp: 10 },
+    spider:  { lvl: 2, prim: { str: 4, agi: 4, vit: 3, spd: 4, wis: 1 }, weaponMin: 1, xp: 10, special: { poison: 2 } },
     rat:     { lvl: 1, prim: { str: 2, agi: 4, vit: 2, spd: 5, wis: 1 }, weaponMin: 1, xp: 5 },
     octopus: { lvl: 2, prim: { str: 4, agi: 3, vit: 4, spd: 3, wis: 2 }, weaponMin: 1, xp: 10 },
 };

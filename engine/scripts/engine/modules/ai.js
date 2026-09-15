@@ -48,14 +48,16 @@ function createEnemyAI({ world, ECS, COMPONENTS, addSystem = null,
     }
 
     // Регистрация заспавненного персонажа как врага (дом = текущая позиция)
-    // attackR — «зона достижимости оружия»: дистанция остановки и атаки
-    function register(id, { detectR = 140, leashR = 300, patrolR = 110, attackR = 40 } = {}) {
+    // attackR — «зона достижимости оружия»: дистанция остановки и атаки;
+    // attackCd — перезарядка атаки, сек (cd атаки из ATTACK_CONFIGS, образец)
+    function register(id, { detectR = 140, leashR = 300, patrolR = 110, attackR = 40,
+                            attackCd = ATTACK_CD } = {}) {
         ECS.addComponent(world, id, "aiState", AI_PATROL);
         ECS.addComponent(world, id, "aiHomeX", COMPONENTS.positionX[id]);
         ECS.addComponent(world, id, "aiHomeY", COMPONENTS.positionY[id]);
         STATE[id] = {
             detect: detectR, leash: leashR, patrol: patrolR,
-            attackR,
+            attackR, attackCd,
             speed0: COMPONENTS.ctrlSpeed[id],
             atkCd: 0,
             t: 0.5 + Math.random() * 2, // старт патруля вразнобой
@@ -65,6 +67,25 @@ function createEnemyAI({ world, ECS, COMPONENTS, addSystem = null,
         };
         ECS.addComponent(world, id, "ctrlVI", 0); // бит = сущность на виртуальном вводе
         ECS.addComponent(world, id, "ctrlVJ", 0);
+    }
+
+    // ЗОВ СОРАТНИКОВ (особая способность гоблина «call», ENEMY_BESTIARY):
+    // все враги в радиусе от точки бросают патруль и бегут на героя —
+    // тот же переход, что при естественной aggro-обнаружении.
+    function alert(x, y, radius) {
+        const entities = world.queries.ai.entities;
+        const r2 = radius * radius;
+        for (let k = 0; k < entities.length; k++) {
+            const id = entities[k], s = STATE[id];
+            if (!s) continue;
+            const dx = COMPONENTS.positionX[id] - x, dy = COMPONENTS.positionY[id] - y;
+            if (dx * dx + dy * dy > r2) continue;
+            if (COMPONENTS.aiState[id] !== AI_CHASE) {
+                COMPONENTS.aiState[id] = AI_CHASE;
+                COMPONENTS.ctrlSpeed[id] = s.speed0 * CHASE_BOOST;
+                if (s.atkCd <= 0) s.atkCd = 0.3; // не бить в первый же кадр
+            }
+        }
     }
 
     function drive(id, ix, iy) {
@@ -154,7 +175,7 @@ function createEnemyAI({ world, ECS, COMPONENTS, addSystem = null,
                         drive(id, 0, 0);
                         if (s.atkCd <= 0 && !COMPONENTS.ctrlLock[id]) {
                             characters.playAttack(id, hero);
-                            s.atkCd = ATTACK_CD;
+                            s.atkCd = s.attackCd;
                         }
                     } else {
                         seek(id, s, hero.x, hero.y);
@@ -177,7 +198,7 @@ function createEnemyAI({ world, ECS, COMPONENTS, addSystem = null,
     }
     if (addSystem) addSystem(update);
 
-    return { register, update, STATE, STATE_NAMES: AI_STATE_NAMES };
+    return { register, alert, update, STATE, STATE_NAMES: AI_STATE_NAMES };
 }
 
 // Подключение двумя способами (файл без import/export валиден и как ES-модуль):
