@@ -98,7 +98,7 @@ function createAbilities({ app, combat, characters, projectiles, fx, assets,
                 if (!embed || !embed[slot.def.icon]) {
                     throw new Error(`abilities.load: нет вшитой иконки ${slot.def.icon} (make_embedded_abilities.py)`);
                 }
-                slot.iconTex = assets.textureFromDataURL(embed[slot.def.icon]);
+                slot.iconTex = await assets.textureFromDataURL(embed[slot.def.icon]);
             } else {
                 slot.iconTex = await assets.loadTexture(path);
             }

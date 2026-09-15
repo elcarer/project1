@@ -1010,7 +1010,8 @@ patrol→chase→attack→return).
 - **Отладка без отрисовки**: `index.html?raf=timeout` подменяет
   requestAnimationFrame на setTimeout (до подключения Pixi) — игра грузится и
   тикает на скрытой/перекрытой панели (автотесты); на обычном запуске не
-  включается.
+  включается. `?filemode=1` — прогон file://-веток (вшитые EMBED-ассеты) по
+  http: тесты двойного клика без двойного клика.
 - **Стартовое меню** (сцена "menu"): после загрузки мира игра открывает меню —
   фон `start.png` (cover на весь экран), колонка кнопок `button.png`
   (NineSlice, 280×60, слева на лесном краю арта): Продолжить / Новая игра
@@ -1035,6 +1036,15 @@ patrol→chase→attack→return).
   ai.getPlayerPos возвращает «бесконечно далёкую» точку, камера держит точку
   спавна, сцена game не работает без героя. Волк героем больше не является —
   он монстр (ENEMY_STATS.wolf, ~16% лесных спавнов, EMBED.wolf на file://).
+  ⚠️ ЛОВУШКИ file:// (репорт пользователя, чинились 2026-09-16):
+  (1) `newGame` собирал адрес из `location.pathname` ("/D:/...") — Chromium
+  блокирует с «Unsafe attempt to load URL» — навигация только ОТНОСИТЕЛЬНЫМ
+  адресом ("index.html?w=...&seed=...");
+  (2) `textureFromDataURL` возвращает ПРОМИС — `new PIXI.Sprite(промис)` и
+  присвоение промиса в `sprite.texture` (иконки панели: await был пропущен)
+  ломают рендер/размеры с «Cannot read properties of undefined (reading
+  'width')» — await обязателен везде; ветки file:// прогоняются по http
+  параметром `?filemode=1`.
 
 ## Квесты (modules/quests.js + data/quests.js)
 

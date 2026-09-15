@@ -61,7 +61,8 @@
 
     // На file:// картинка с диска — чужой origin: WebGL не грузит её в GPU,
     // а fetch/XHR до файла запрещены. Вшитые копии — только для этого режима.
-    const FILE_MODE = location.protocol === "file:";
+    // ?filemode=1 — прогон file://-веток по http (тесты вшитых ассетов)
+    const FILE_MODE = location.protocol === "file:" || q.has("filemode");
     const EMBED = globalThis.EMBEDDED_GAME_ASSETS;
     if (FILE_MODE && !EMBED) throw new Error("file://: не подключён scripts/embedded_assets.js");
 
@@ -201,9 +202,11 @@
     const closeSettings = () => { settingsOpen = false; settingsPanel.visible = false; };
     const newGame = () => {
         // новый мир: та же карта по размеру, случайный сид; после загрузки —
-        // ЛОББИ выбора героя (флаг читается при буте)
+        // ЛОББИ выбора героя (флаг читается при буте). ОТНОСИТЕЛЬНЫЙ адрес:
+        // на file:// location.pathname ("/D:/...") даёт «Unsafe attempt to
+        // load URL» — навигация разрешена только в пределах папки
         sessionStorage.setItem("pickHero", "1");
-        location.href = location.pathname + "?w=" + W + "&h=" + H +
+        location.href = "index.html?w=" + W + "&h=" + H +
             "&seed=" + Math.floor(Math.random() * 2147483647);
     };
     // «Продолжить»: герой уже с выбранном классом? нет — пробуем сохранённый
@@ -299,9 +302,12 @@
                 .roundRect(0, 0, CARD_W, CARD_H, 12).stroke({ width: 3, color: hot ? 0xffd98e : 0x6b4a2f });
         };
         drawCardBg(false);
-        const doll = new PIXI.Sprite(FILE_MODE
-            ? assets.textureFromDataURL(EMBED_LOBBY.dolls[cls.doll])
-            : await assets.loadTexture(`./images/heroes/doll/${cls.doll}.png`));
+        // текстура ДО создания Sprite (на file:// textureFromDataURL — промис:
+        // Sprite(промис) ломает рендер и размеры)
+        const dollTex = FILE_MODE
+            ? await assets.textureFromDataURL(EMBED_LOBBY.dolls[cls.doll])
+            : await assets.loadTexture(`./images/heroes/doll/${cls.doll}.png`);
+        const doll = new PIXI.Sprite(dollTex);
         doll.scale.set(0.56); // 192×288 → ~107×161
         doll.position.set((CARD_W - doll.width) / 2, 10);
         const name = new PIXI.Text({
@@ -341,11 +347,17 @@
             if (heroLoading) return;
             heroLoading = true;
             lobbyHint.text = `Загрузка героя: ${cls.name}…`;
-            await spawnHero(cls.key);
-            localStorage.setItem("heroKey", cls.key);
+            try {
+                await spawnHero(cls.key);
+                localStorage.setItem("heroKey", cls.key);
+                lobbyUi.visible = false;
+                scenes.go("game");
+            } catch (err) {
+                console.error(err);
+                lobbyHint.text = `Ошибка загрузки героя: ${err.message}`;
+                lobbyHint.style.fill = "#ff7d6e";
+            }
             heroLoading = false;
-            lobbyUi.visible = false;
-            scenes.go("game");
         });
         lobbyUi.addChild(card);
         lobbyCards.push(card);
