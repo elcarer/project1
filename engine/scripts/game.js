@@ -57,7 +57,32 @@
         x: 16, y: 12, size: 24, color: "#88ffcc",
     });
     hintLabel.visible = false; // в стартовом меню подсказка не нужна
+    const placeHint = () => hintLabel.position.set(16, app.screen.width < 720 ? 88 : 48);
+    placeHint(); // под полосой кнопок меню (добавится позже)
+    app.renderer.on("resize", placeHint);
     const frame = () => new Promise((r) => requestAnimationFrame(r)); // дать статусу отрисоваться
+
+    // ── ПАУЗА МИРА: панели меню и пауза останавливают системы модулей (ИИ,
+    // снаряды, бой, тайлы), ядро (рендер/анимации) продолжает работать.
+    // СЦЕНЫ мороз не затрагивает (панель сама должна ловить Escape).
+    let worldPaused = false;
+    const setWorldPaused = (v) => { worldPaused = v; };
+    const gatedAddSystem = (fn) => addSystem((t) => { if (!worldPaused) fn(t); });
+
+    // ── ЖУРНАЛ СОБЫТИЙ (вкладка «Журнал») и БИБЛИОТЕКА (открытие видов) ────
+    const gameLog = [];
+    const logEvent = (text, color = "#cfc4a6") => {
+        gameLog.push({ text, color });
+        if (gameLog.length > 100) gameLog.shift();
+    };
+    // зачёт библиотеки живёт между сессиями (как в образце)
+    const libraryUnlocked = new Set(JSON.parse(localStorage.getItem("libraryKinds") || "[]"));
+    const unlockKind = (kind) => {
+        if (libraryUnlocked.has(kind)) return false;
+        libraryUnlocked.add(kind);
+        localStorage.setItem("libraryKinds", JSON.stringify([...libraryUnlocked]));
+        return true;
+    };
 
     // На file:// картинка с диска — чужой origin: WebGL не грузит её в GPU,
     // а fetch/XHR до файла запрещены. Вшитые копии — только для этого режима.
@@ -282,6 +307,7 @@
     lobbyTitle.anchor.set(0.5);
     lobbyUi.addChild(lobbyTitle);
     const abilityIconTex = {}; // кэш иконок карточек (те же файлы, что у панели)
+    const heroDolls = {};      // портреты-куклы (общие с меню «Экипировка»)
     const abilityIcon = async (icon) => {
         if (!abilityIconTex[icon]) {
             abilityIconTex[icon] = FILE_MODE
@@ -304,10 +330,10 @@
         drawCardBg(false);
         // текстура ДО создания Sprite (на file:// textureFromDataURL — промис:
         // Sprite(промис) ломает рендер и размеры)
-        const dollTex = FILE_MODE
+        heroDolls[cls.key] = FILE_MODE
             ? await assets.textureFromDataURL(EMBED_LOBBY.dolls[cls.doll])
             : await assets.loadTexture(`./images/heroes/doll/${cls.doll}.png`);
-        const doll = new PIXI.Sprite(dollTex);
+        const doll = new PIXI.Sprite(heroDolls[cls.key]);
         doll.scale.set(0.56); // 192×288 → ~107×161
         doll.position.set((CARD_W - doll.width) / 2, 10);
         const name = new PIXI.Text({
@@ -331,12 +357,12 @@
         });
         desc.position.set(15, 324);
         card.addChild(bg, doll, name, stats, desc);
-        // иконки боевых умений класса (3 слота) — под описанием
-        for (let i = 0; i < cls.loadout.length; i++) {
-            const def = HERO_ABILITIES[cls.key][i] || HERO_ABILITIES[cls.key].find((d) => d.key === cls.loadout[i]);
-            const icon = new PIXI.Sprite(await abilityIcon(def.icon));
+        // иконки боевых умений класса (изучаются из дерева в меню «Умения»)
+        const poolDefs = HERO_ABILITIES[cls.key];
+        for (let i = 0; i < poolDefs.length; i++) {
+            const icon = new PIXI.Sprite(await abilityIcon(poolDefs[i].icon));
             icon.width = icon.height = 34;
-            icon.position.set(CARD_W / 2 - (cls.loadout.length * 42 - 8) / 2 + i * 42, CARD_H - 46);
+            icon.position.set(CARD_W / 2 - (poolDefs.length * 42 - 8) / 2 + i * 42, CARD_H - 46);
             card.addChild(icon);
         }
         bg.eventMode = "static";
@@ -552,7 +578,8 @@
         if (gx < 0 || gy < 0 || gx >= W || gy >= H) return true;
         return waterMask[gy * W + gx] !== 1;
     };
-    const characters = createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, blockedAlt: blockedSwim, input: charInput });
+    const characters = createCharacterSystem({ world, ECS, COMPONENTS, DATA, blocked, blockedAlt: blockedSwim, input: charInput,
+    addSystem: gatedAddSystem });
     // Снаряды: типы из data/attacks.js (грузятся ниже, перед боевой сценой);
     // привязка персонажей к атакам — сразу после спавна каждого. При выпуске
     // снаряд получает снимок боевых данных владельца (фракция, бросок урона) —
@@ -565,7 +592,7 @@
     let heroCls = null;   // класс из HERO_CLASSES (data/heroes.js)
     let abilities = null; // панель способностей — при спавне героя
     const projectiles = createProjectiles({
-        world, ECS, COMPONENTS, DATA, addSystem, assets, rows, TS,
+        world, ECS, COMPONENTS, DATA, addSystem: gatedAddSystem, assets, rows, TS,
         getFaction: (id) => (combat ? combat.factionOf(id) : -1),
         getAttack: (id) => (combat ? combat.rollAttack(id) : null),
         getAim: (id) => characters.getAim(id), // прицел атаки (modules/character.js)
@@ -577,9 +604,9 @@
     // система превращает попадания снарядов в урон, смерть, опыт и уровни
     const fxLayer = new PIXI.Container();
     worldContainer.addChild(fxLayer); // добавлен последним — рисуется поверх
-    const fx = createFX({ app, layer: fxLayer, addSystem });
+    const fx = createFX({ app, layer: fxLayer, addSystem: gatedAddSystem });
     combat = createCombat({
-        world, ECS, COMPONENTS, DATA, addSystem, characters, projectiles, fx,
+        world, ECS, COMPONENTS, DATA, addSystem: gatedAddSystem, characters, projectiles, fx,
         onRemove(id) { // мёртвый враг уходит из рядов ног и хендлов сцены
             const k = creatureRowTrack.findIndex((e) => e.id === id);
             if (k !== -1) { creatureRowTrack.splice(k, 1); creatureRowCache.splice(k, 1); }
@@ -589,9 +616,19 @@
         // Убийство героем — событие квестов: вид жертвы берём из enemies (жертва
         // покинет список позже, при уборке трупа, а событие приходит в момент смерти)
         onKill(killerId, victimId) {
-            if (!quests) return;
             const en = enemies.find((e) => e.id === victimId);
-            if (en) quests.notifyKill(en.name);
+            if (!en) return;
+            const info = ENEMY_BESTIARY.find((b) => b.key === en.name);
+            logEvent(`Убийство: ${info ? info.name : en.name} (+${ENEMY_STATS[en.name] ? ENEMY_STATS[en.name].xp : "?"} опыта)`, "#a8e05f");
+            if (unlockKind(en.name)) {
+                const nm = info ? info.name : en.name;
+                logEvent(`Библиотека: открыт «${nm}»`, "#ffd98e");
+            }
+            if (quests) quests.notifyKill(en.name);
+        },
+        // уровень героя — в журнал
+        onLevelUp(id, lvl) {
+            logEvent(`Достигнут уровень ${lvl}: +1 очко характеристик, +1 очко умений`, "#cc7dee");
         },
         // «Получив урон, зовёт соратников» — особая способность гоблина
         // (special.call, ENEMY_STATS): соратники в радиусе N клеток бросают
@@ -636,12 +673,43 @@
         rows[r].addChild(heroSprite);
         heroRow = r;
     }
-    addSystem(heroRowFollow);
+    gatedAddSystem(heroRowFollow);
 
     // ── СПАВН ГЕРОЯ выбранного класса (лобби/«Продолжить») ──────────────────
     // Лист класса, ECS-сущность, привязка атаки, ролевые статы класса
     // (HERO_CLASSES), квесты и панель способностей — создаются один раз.
     let heroReach = 36; // «зона достижимости оружия» — по атаке класса
+    // меню игры (полоса + панели), кэш иконок дерева, мини-карта мира
+    let gamemenu = null;
+    const menuIcons = {};
+    let mapTex = null;
+    function getMapImage() { // 1px карты = 1 тайл: вода/лес/открытая местность
+        if (!mapTex) {
+            const canvas = document.createElement("canvas");
+            canvas.width = W; canvas.height = H;
+            const ctx = canvas.getContext("2d");
+            for (let gy = 0; gy < H; gy++) {
+                for (let gx = 0; gx < W; gx++) {
+                    const k = gy * W + gx;
+                    ctx.fillStyle = waterMask[k] === 1 ? "#3a6ea8"
+                        : forest[k] === 1 ? "#2d5a2d" : "#7d9c55";
+                    ctx.fillRect(gx, gy, 1, 1);
+                }
+            }
+            mapTex = PIXI.Texture.from(canvas);
+        }
+        return { texture: mapTex, w: W, h: H, ts: TS };
+    }
+    function recomputePassives() { // learned-узлы → плоский словарь эффектов боя
+        const s = combat.stat(heroId);
+        if (!s || !heroCls) return;
+        s.passives = {};
+        const pmap = HERO_TREE_PASSIVES[heroCls.key] || {};
+        for (const [idx, name] of Object.entries(pmap)) {
+            const lvl = (s.learned && s.learned[idx]) || 0;
+            if (lvl > 0) s.passives[name] = lvl;
+        }
+    }
     async function spawnHero(classKey) {
         if (heroId !== null) return heroId;
         const cls = HERO_CLASSES.find((c) => c.key === classKey) || HERO_CLASSES[0];
@@ -660,7 +728,7 @@
         // Ролевые статы класса (формулы — data/stats.js)
         combat.init(id, {
             faction: 0, hero: true, size: ch.size, lvl: 1,
-            prim: { ...cls.prim }, growth: { ...cls.growth },
+            prim: { ...cls.prim }, growth: null, // рост — только очками игрока
             weaponMin: cls.weaponMin,
         });
         heroId = id;
@@ -685,6 +753,40 @@
             await abilities.load({ fileMode: FILE_MODE, embed: globalThis.EMBED_ABILITIES || null });
             app.renderer.on("resize", abilities.place);
         }
+        // Иконки узлов дерева для меню (только изучаемые узлы) — кэш синхронный
+        const tree = ABILITY_TREES[cls.tree];
+        for (let i = 0; i < tree.length; i++) {
+            const has = HERO_ABILITIES[cls.key].some((d) => d.node === i)
+                || (HERO_TREE_PASSIVES[cls.key] || {})[i];
+            if (!has) continue;
+            const key = cls.key + "/" + tree[i].icon;
+            if (!menuIcons[key]) {
+                menuIcons[key] = FILE_MODE
+                    ? await assets.textureFromDataURL(globalThis.EMBED_ABILITIES[key])
+                    : await assets.loadTexture(`./images/abilities/${key}.png`);
+            }
+        }
+        // Меню игры (полоса кнопок + панели) — один раз на сессию
+        if (!gamemenu) {
+            gamemenu = createGameMenu({
+                app, combat, quests,
+                getHero: () => ({ id: heroId, cls: heroCls, onLearned: recomputePassives }),
+                getIcon: (classKey, num) => menuIcons[classKey + "/" + num] || PIXI.Texture.EMPTY,
+                getDoll: (key) => heroDolls[key],
+                getMapImage,
+                enemyKinds: () => enemyKinds,
+                gameLog: () => gameLog,
+                library: { unlocked: libraryUnlocked },
+                onToggleFullscreen: toggleFullscreen,
+                onToMenu: () => scenes.go("menu"),
+            });
+            gamemenu.onOpenTab = (tab) => {
+                if (tab) { setWorldPaused(true); scenes.go("panel"); }
+                else { setWorldPaused(false); scenes.go("game"); }
+            };
+            app.renderer.on("resize", gamemenu.place);
+            gamemenu.show(true);
+        }
         return id;
     }
 
@@ -701,7 +803,7 @@
             creatureRowCache[k] = r;
         });
     }
-    addSystem(creatureRowFollow);
+    gatedAddSystem(creatureRowFollow);
 
     // ===== Враги: деревни и дикие (modules/ai.js) ==============================
     // Гоблины (элитка — шаман), дворфы, орки (элитка — огр) живут деревнями;
@@ -731,7 +833,7 @@
     };
     const weaponAttackCd = (kind) => ATTACK_CONFIGS[CHARACTER_ATTACKS[kind].attack].cd || 1.4;
     const ai = createEnemyAI({
-        world, ECS, COMPONENTS, DATA, addSystem, characters,
+        world, ECS, COMPONENTS, DATA, addSystem: gatedAddSystem, characters,
         blocked,
         blockedAlt: blockedSwim, // пловец: вода проходима, всё остальное — нет
         // героя до выбора класса нет — «он» бесконечно далеко, никто не агрится
@@ -873,7 +975,7 @@
 
     // ===== Модули: ввод, камера-слежение, отладка =====
     const input = createInput(); // endFrame зовёт сцена В КОНЦЕ кадра (см. ниже)
-    const camera = createCamera({ app, container: worldContainer, addSystem });
+    const camera = createCamera({ app, container: worldContainer, addSystem: gatedAddSystem });
     // Средняя кнопка мыши — вернуть изначальный зум (preventDefault гасит autoscroll)
     const INITIAL_ZOOM = 2.5;
     app.canvas.addEventListener("mousedown", (e) => {
@@ -904,7 +1006,7 @@
         tileAt: (i, j) => cornerTex[j * (W + 1) + i],
     });
     const debug = createDebug({
-        app, addSystem, world, grid: SpatialHashGrid, components: COMPONENTS,
+        app, addSystem: gatedAddSystem, world, grid: SpatialHashGrid, components: COMPONENTS,
         layer: worldContainer, overlayPos: { x: 16, y: 48 },
     });
 
@@ -920,6 +1022,7 @@
             hintLabel.visible = true;
             if (quests) quests.show(true);
             if (abilities) abilities.show(true);
+            if (gamemenu) gamemenu.show(true);
             debug.info["Сцена"] = "game";
         },
         update(ticker) {
@@ -980,15 +1083,31 @@
     });
     scenes.add("pause", {
         enter() {
+            setWorldPaused(true); // мир замирает целиком (ИИ/снаряды/бой)
             hud.text("pauseLabel", "ПАУЗА", {
                 x: app.screen.width / 2 - 110, y: app.screen.height / 2 - 45,
                 size: 64, color: "#ffee66",
             });
+            hintLabel.visible = false;
+            if (gamemenu) gamemenu.show(false);
             debug.info["Сцена"] = "pause";
+        },
+        exit() {
+            setWorldPaused(false);
+            if (gamemenu) gamemenu.show(true);
         },
         update() {
             if (input.wasPressed("KeyP")) scenes.go("game");
             if (input.wasPressed("KeyL") && quests) quests.toggleLog(); // журнал читаем и в паузе
+            input.endFrame();
+        },
+    });
+    // Панели игрового меню: мир на паузе, Escape/крестик закрывают
+    scenes.add("panel", {
+        enter() { setWorldPaused(true); debug.info["Сцена"] = "panel"; },
+        exit() { setWorldPaused(false); },
+        update() {
+            if (input.wasPressed("Escape") && gamemenu) gamemenu.close();
             input.endFrame();
         },
     });
@@ -997,6 +1116,7 @@
             placeLobby(); // раскладка могла измениться со старта
             lobbyUi.visible = true;
             hintLabel.visible = false;
+            if (gamemenu) gamemenu.show(false);
             debug.info["Сцена"] = "lobby";
         },
         exit() {
@@ -1013,6 +1133,7 @@
             hintLabel.visible = false;
             if (quests) quests.show(false);   // интерфейс квестов в меню не нужен
             if (abilities) abilities.show(false); // панель умений тоже
+            if (gamemenu) gamemenu.show(false);   // полоса меню тоже
             debug.info["Сцена"] = "menu";
         },
         exit() {
@@ -1045,6 +1166,18 @@
         components: COMPONENTS, data: DATA, enemies, ai, projectiles, combat, quests,
         get abilities() { return abilities; },
         abilitiesState: () => (abilities ? abilities.snapshot() : null),
+        get gamemenu() { return gamemenu; },
+        gameLog: () => gameLog,
+        libraryUnlocked,
+        learn: (idx) => {
+            // тестовый проход: изучение узла дерева текущего класса
+            const tree = ABILITY_TREES[heroCls.tree];
+            const lvl = combat.learn(heroId, idx, tree[idx].maxLvl, tree[idx].prev);
+            recomputePassives();
+            if (abilities) abilities.syncSlots();
+            return lvl;
+        },
+        allocate: (key) => combat.allocateStat(heroId, key),
         questState: () => (quests ? quests.snapshot() : null),
         heroStat: () => combat.stat(heroId),
         heroDop: () => combat.dopOf(heroId),

@@ -1,6 +1,9 @@
-// СПОСОБНОСТИ ГЕРОЯ — панель слотов с кулдаунами (клавиши 1..N).
-// Набор — HERO_ABILITIES[classKey] (data/abilities.js, адаптации умений
-// образца forWork/example); механика каста — здесь (RUN по ключу).
+// СПОСОБНОСТИ ГЕРОЯ — панель слотов изученных АКТИВНЫХ умений (клавиши 1..N).
+// Умения ИЗУЧАЮТСЯ из дерева (меню «Умения», combat.learn за очки умений):
+// пул класса — HERO_ABILITIES (data/abilities.js, привязка mech→узел дерева);
+// слот появляется, когда уровень узла становится ≥ 1. Уровень узла усиливает
+// эффект (lvlDmg/lvlHeal/lvlBonus), кулдауны сокращаются рефлексами
+// (dop.cdrAbility) и пассивкой «Прочитанный гримуар» (passives.cdrFlat).
 // Панель живёт в app.stage (экранные координаты), внизу по центру;
 // place() пересчитывает на resize, show() прячет в меню (как квесты).
 //
@@ -10,7 +13,7 @@
 //
 // Механики опираются на боевые данные combat (уровень/статы/цели),
 // characters (позиция героя), projectiles.spawn (снаряд с СНИМКОМ урона
-// владельца) и combat.applySlow (замедление/ускорение).
+// владельца) и combat.applySlow/applyPoison (замедление/яд).
 //
 // Битовый бюджет: НОЛЬ новых компонентов — кулдауны в массиве слотов фабрики.
 //
@@ -31,27 +34,44 @@ function createAbilities({ app, combat, characters, projectiles, fx, assets,
     if (!combat || !characters || !projectiles || !fx || !assets) {
         throw new Error("createAbilities: нужны combat, characters, projectiles, fx, assets");
     }
-    const defs = loadout;
-    if (!defs || !defs.length) throw new Error("createAbilities: не передан loadout");
+    const pool = loadout || [];
+    if (!pool.length) throw new Error("createAbilities: не передан loadout");
 
-    // ── СОСТОЯНИЕ СЛОТОВ (кулдауны вне битовой маски — обычные объекты) ────
-    const slots = defs.map((def) => ({ def, cd: 0, iconTex: null, root: null,
-                                      overlay: null, label: null, secs: null }));
-    // Отложенные эффекты (метеорит): { t, x, y, base, critPower, radius }
-    const pendings = [];
+    // ── СЛОТЫ: только ИЗУЧЕННЫЕ активные умения (learned[def.node] ≥ 1).
+    // Пересобираются syncSlots() — состояние кулдаунов живёт в cdMap по mech.
+    const cdMap = {};     // mech → оставшиеся секунды
+    let slots = [];
+    let slotsSig = "";
+    const pendings = [];  // метеориты: { t, x, y, base, critPower, radius }
+
+    function heroLearned() { const s = combat.stat(heroId); return (s && s.learned) || {}; }
+    function heroPassives() { const s = combat.stat(heroId); return (s && s.passives) || {}; }
+    function syncSlots() {
+        const learned = heroLearned();
+        const sig = pool.map((d) => learned[d.node] || 0).join(",");
+        if (sig === slotsSig) return;
+        slotsSig = sig;
+        slots = pool.filter((d) => (learned[d.node] || 0) > 0)
+            .map((def) => ({ def, lvl: learned[def.node], cd: cdMap[def.mech] || 0,
+                             root: null, overlay: null, frame: null, secs: null, icon: null }));
+        rebuildPanel();
+    }
 
     // ── ПАНЕЛЬ (app.stage: экран bottom-center) ─────────────────────────────
     const container = new PIXI.Container();
     container.visible = false; // до первого show(true)
     app.stage.addChild(container);
-    for (let i = 0; i < slots.length; i++) buildSlot(slots[i], i);
-    place();
+    function rebuildPanel() {
+        container.removeChildren();
+        for (let i = 0; i < slots.length; i++) buildSlot(slots[i], i);
+        place();
+    }
     function buildSlot(slot, i) {
-        const root = new PIXI.Container();
         const S = ABILITY_SLOT;
+        const root = new PIXI.Container();
         const frame = new PIXI.Graphics();
         drawFrame(frame, S, false);
-        const icon = new PIXI.Sprite();
+        const icon = new PIXI.Sprite(icons[slot.def.icon] || PIXI.Texture.EMPTY);
         icon.anchor.set(0.5, 0.5);
         icon.width = icon.height = S - 8;
         icon.position.set(S / 2, S / 2);
@@ -74,6 +94,12 @@ function createAbilities({ app, combat, characters, projectiles, fx, assets,
         slot.overlay = overlay;
         slot.frame = frame;
         slot.secs = secs;
+        slot.level = new PIXI.Text(String(slot.lvl), {
+            fontFamily: globalThis.GAME_FONT || "monospace",
+            fontSize: 14, fill: "#9fd8ff", fontWeight: "bold",
+        });
+        slot.level.position.set(S - 14, 2);
+        root.addChild(slot.level);
     }
     function drawFrame(g, S, ready) {
         g.clear()
@@ -83,35 +109,59 @@ function createAbilities({ app, combat, characters, projectiles, fx, assets,
 
     function place() {
         const w = app.screen.width, h = app.screen.height;
-        const total = slots.length * ABILITY_SLOT + (slots.length - 1) * ABILITY_GAP;
+        const total = slots.length * ABILITY_SLOT + Math.max(0, slots.length - 1) * ABILITY_GAP;
         slots.forEach((slot, i) => {
             slot.root.position.set((w - total) / 2 + i * (ABILITY_SLOT + ABILITY_GAP),
                                    h - ABILITY_SLOT - ABILITY_BOTTOM);
         });
     }
 
-    // ── ЗАГРУЗКА ИКОНОК: по http — живые файлы, на file:// — вшитые data-URL ─
+    // ── ЗАГРУЗКА ИКОНОК пула: по http — файлы, на file:// — вшитые data-URL ─
+    const icons = {};
     async function load({ fileMode = false, embed = null, dir = "./images/abilities/" } = {}) {
-        for (const slot of slots) {
-            const path = dir + slot.def.icon + ".png";
-            if (fileMode) {
-                if (!embed || !embed[slot.def.icon]) {
-                    throw new Error(`abilities.load: нет вшитой иконки ${slot.def.icon} (make_embedded_abilities.py)`);
-                }
-                slot.iconTex = await assets.textureFromDataURL(embed[slot.def.icon]);
-            } else {
-                slot.iconTex = await assets.loadTexture(path);
-            }
-            slot.icon.texture = slot.iconTex;
+        for (const def of pool) {
+            if (icons[def.icon]) continue;
+            icons[def.icon] = fileMode
+                ? await (async () => {
+                    if (!embed || !embed[def.icon]) {
+                        throw new Error(`abilities.load: нет вшитой иконки ${def.icon} (make_embedded_abilities.py)`);
+                    }
+                    return assets.textureFromDataURL(embed[def.icon]);
+                })()
+                : await assets.loadTexture(dir + def.icon + ".png");
         }
+        syncSlots();
+        for (const slot of slots) if (slot.icon) slot.icon.texture = icons[slot.def.icon];
+    }
+
+    // ── ПАРАМЕТРЫ КАСТА: уровень узла усиливает эффект, рефлексы/«гримуар» ──
+    // сокращают кулдаун
+    function effParams(slot) {
+        const p = { ...slot.def.params };
+        const k = slot.lvl - 1;
+        if (k > 0) {
+            if (slot.def.lvlDmg) p.damage += k * slot.def.lvlDmg;
+            if (slot.def.lvlHeal) p.amount += k * slot.def.lvlHeal;
+            if (slot.def.lvlBonus) p.bonus += k * slot.def.lvlBonus;
+        }
+        return p;
+    }
+    function effCooldown(slot) {
+        const s = combat.stat(heroId);
+        const cdr = s ? s.dop.cdrAbility : 0;
+        const flat = heroPassives().cdrFlat || 0;
+        return Math.max(1, slot.def.cooldown * (1 - cdr / 100) - flat);
     }
 
     // ── КАСТ: use(i) → механика по ключу; false = «нельзя» (кулдаун не тратится)
     function use(i) {
         const slot = slots[i];
-        if (!slot || slot.cd > 0 || !slot.iconTex) return false;
-        const ok = RUN[slot.def.key] ? RUN[slot.def.key](slot.def.params) : false;
-        if (ok) slot.cd = slot.def.cooldown;
+        if (!slot || slot.cd > 0 || !icons[slot.def.icon]) return false;
+        const ok = RUN[slot.def.mech] ? RUN[slot.def.mech](effParams(slot)) : false;
+        if (ok) {
+            slot.cd = effCooldown(slot);
+            cdMap[slot.def.mech] = slot.cd;
+        }
         return ok;
     }
 
@@ -146,7 +196,7 @@ function createAbilities({ app, combat, characters, projectiles, fx, assets,
                 vx: dx / d * p.speed, vy: dy / d * p.speed,
                 lifetime: Math.min(2.2, Math.sqrt(bd) / p.speed + 0.6),
                 owner: heroId, faction: 0,
-                // снимок урона едет на снаряде (как у автоатаки) — SPELL может убить
+                // снимок урона едет на снаряде (как у автоатаки)
                 attack: { base: p.damage + p.spellPerWis * s.dop.spellPower,
                           critPower: s.dop.critPower },
             });
@@ -154,9 +204,8 @@ function createAbilities({ app, combat, characters, projectiles, fx, assets,
             return true;
         },
 
-        // ПРОНЗАЮЩИЙ РЫВОК / ЗАРЯЖЕННАЯ АТАКА: шагами по взгляду до params.dist;
-        // задетые получают 2 + подвижность/2 (dash) или 4 + сила (charge);
-        // melee:false — контратака в рывке неуместна
+        // РЫВОК (dash/charge): шагами по взгляду до params.dist; задетые получают
+        // 2 + подвижность/2 (dash) или 4 + сила (charge)
         dash(p) {
             const from = heroPos();
             const s = combat.stat(heroId);
@@ -190,17 +239,20 @@ function createAbilities({ app, combat, characters, projectiles, fx, assets,
             return true;
         },
 
-        // МОРОЗ: волна вокруг героя — урон + замедление всем в радиусе
+        // МОРОЗ: волна вокруг героя — урон + замедление; «Отравленный лёд»
+        // (пассивка sorca) добавляет яд
         frost(p) {
             const from = heroPos();
             const s = combat.stat(heroId);
             const base = p.damage + Math.round(s.dop.spellPower * p.spellScale);
+            const poison = heroPassives().frostPoison || 0;
             for (const t of combat.targetsOf(0)) {
                 const dx = COMPONENTS.positionX[t] - from.x;
                 const dy = COMPONENTS.positionY[t] - from.y;
                 if (dx * dx + dy * dy > p.radius * p.radius) continue;
                 combat.dealDamage(heroId, t, { base });
                 combat.applySlow(t, p.slowMul, p.slowT);
+                if (poison) combat.applyPoison(t, poison, heroId);
                 fx.burst(COMPONENTS.positionX[t], COMPONENTS.positionY[t] - 14,
                     { count: 5, color: 0x9fd8ff, speedMax: 70, life: 0.5 });
             }
@@ -208,9 +260,34 @@ function createAbilities({ app, combat, characters, projectiles, fx, assets,
             return true; // АоЕ вокруг себя — кастуется всегда
         },
 
-        // ЗАРЯЖЕННАЯ АТАКА рыцаря: тот же рывок, урон от Силы (strScale)
-        charge(p) {
-            return RUN.dash(p);
+        // МЕТЕОРИТ: падает через delay сек в точку ближайшего врага (≤range),
+        // урон по площади; отложенный тик — в update() (заморожен на паузе)
+        meteor(p) {
+            const from = heroPos();
+            const s = combat.stat(heroId);
+            let best = null, bd = p.range * p.range;
+            for (const t of combat.targetsOf(0)) {
+                const dx = COMPONENTS.positionX[t] - from.x;
+                const dy = COMPONENTS.positionY[t] - from.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < bd) { bd = d2; best = t; }
+            }
+            if (!best) {
+                fx.text(from.x, from.y - 46, "Нет цели",
+                    { color: "#9aa4ad", size: 20, life: 0.7, rise: 20 });
+                return false;
+            }
+            pendings.push({
+                t: p.delay,
+                x: COMPONENTS.positionX[best],
+                y: COMPONENTS.positionY[best],
+                base: p.damage + p.spellPerWis * s.dop.spellPower,
+                critPower: s.dop.critPower,
+                radius: p.radius,
+            });
+            fx.burst(COMPONENTS.positionX[best], COMPONENTS.positionY[best] - 6,
+                { count: 6, color: 0xff8833, speedMax: 40, life: p.delay });
+            return true;
         },
 
         // ВЕЕРНЫЙ БРОСОК плута: count ножей веером по взгляду (±spread радиан),
@@ -323,37 +400,9 @@ function createAbilities({ app, combat, characters, projectiles, fx, assets,
                 { count: 14, color: 0xff5c4d, speedMax: 130, life: 0.6 });
             return true;
         },
-
-        // МЕТЕОРИТ волшебницы: падает через delay сек в точку ближайшего врага
-        // (≤range), урон по площади; отложенный тик — в update() (заморожен на паузе)
-        meteor(p) {
-            const from = heroPos();
-            const s = combat.stat(heroId);
-            let best = null, bd = p.range * p.range;
-            for (const t of combat.targetsOf(0)) {
-                const dx = COMPONENTS.positionX[t] - from.x;
-                const dy = COMPONENTS.positionY[t] - from.y;
-                const d2 = dx * dx + dy * dy;
-                if (d2 < bd) { bd = d2; best = t; }
-            }
-            if (!best) {
-                fx.text(from.x, from.y - 46, "Нет цели",
-                    { color: "#9aa4ad", size: 20, life: 0.7, rise: 20 });
-                return false;
-            }
-            pendings.push({
-                t: p.delay,
-                x: COMPONENTS.positionX[best],
-                y: COMPONENTS.positionY[best],
-                base: p.damage + p.spellPerWis * s.dop.spellPower,
-                critPower: s.dop.critPower,
-                radius: p.radius,
-            });
-            fx.burst(COMPONENTS.positionX[best], COMPONENTS.positionY[best] - 6,
-                { count: 6, color: 0xff8833, speedMax: 40, life: p.delay });
-            return true;
-        },
     };
+    // «Заряженная атака» рыцаря — тот же рывок, урон от Силы (strScale в params)
+    RUN.charge = RUN.dash;
 
     // Ближайшая из 8 строк анимации knife к углу полёта (для веера ножей).
     // Экранная ось Y направлена ВНИЗ: угол 0 — right, π/2 — front (вниз),
@@ -367,10 +416,12 @@ function createAbilities({ app, combat, characters, projectiles, fx, assets,
 
     // ── КАДР: тик кулдаунов/отложенных эффектов + перерисовка шторок ───────
     function update(ticker) {
+        syncSlots();
         const dt = Math.min((ticker && ticker.deltaMS) || 1000 / 60, 50) / 1000;
         for (const slot of slots) {
             if (slot.cd <= 0) continue;
             slot.cd = Math.max(0, slot.cd - dt);
+            cdMap[slot.def.mech] = slot.cd;
             drawCooldown(slot);
         }
         // Метеориты: падение в назначенную точку — урон по площади
@@ -394,9 +445,10 @@ function createAbilities({ app, combat, characters, projectiles, fx, assets,
     function drawCooldown(slot) {
         const S = ABILITY_SLOT;
         const g = slot.overlay;
+        if (!g) return;
         g.clear();
         if (slot.cd > 0) {
-            const frac = slot.cd / slot.def.cooldown;
+            const frac = slot.cd / effCooldown(slot);
             g.rect(0, 0, S, S * frac).fill({ color: 0x000000, alpha: 0.62 });
             slot.secs.text = slot.cd >= 1 ? String(Math.ceil(slot.cd)) : slot.cd.toFixed(1);
             slot.secs.visible = true;
@@ -405,13 +457,14 @@ function createAbilities({ app, combat, characters, projectiles, fx, assets,
         }
     }
 
-    function show(v) { container.visible = v; }
+    function show(v) { container.visible = v && slots.length > 0; }
     function snapshot() {
-        return slots.map((s) => ({ key: s.def.key, name: s.def.name,
-                                   cd: Math.round(s.cd * 100) / 100, max: s.def.cooldown }));
+        return slots.map((s) => ({ key: s.def.mech, name: s.def.name, lvl: s.lvl,
+                                   cd: Math.round(s.cd * 100) / 100, max: effCooldown(s) }));
     }
 
-    return { load, use, update, place, show, snapshot, container };
+    syncSlots();
+    return { load, use, update, place, show, snapshot, syncSlots, container };
 }
 
 // Подключение двумя способами (файл без import/export валиден и как ES-модуль):

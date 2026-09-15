@@ -141,60 +141,63 @@ const ABILITY_TREES = [
     ],
 ];
 
-// БОЕВЫЕ НАБОРЫ ГЕРОЕВ — активные умения по классам (слоты с клавишами 1–3),
-// адаптации умений образца под масштаб нашего боя (по 3 на класс, всего
-// 8 механик: fireball/frost/meteor/dash/charge/fan/pull/haste/heal/execute).
-// Механика — modules/abilities.js; иконки — images/abilities/<icon>.png
-// (на file:// вшиты в embedded_abilities.js — make_embedded_abilities.py).
-// Формулы урона: мудрость = dop.spellPower, ловкость/сила/выносливость —
-// prim героя, подвижность = dop.move.
+// БОЕВЫЕ НАБОРЫ ГЕРОЕВ — АКТИВНЫЕ умения классов (адаптации умений образца
+// под масштаб нашего боя). Каждое привязано к УЗЛУ ДЕРЕВА (node — индекс в
+// ABILITY_TREES класса): умение НЕ выдаётся само — оно ИЗУЧАЕТСЯ за очки
+// умений в меню «Умения» (очко за уровень; требуются изученные предки).
+// mech — ключ механики в modules/abilities.js (RUN); уровень узла усиливает
+// эффект: урон + (уровень−1)×lvlDmg, лечение +lvlHeal×(ур−1), ускорение
+// +lvlBonus×(ур−1). Пассивки классов — HERO_TREE_PASSIVES ниже.
+// Формулы: мудрость = dop.spellPower, ловкость/сила — prim, подвижность =
+// dop.move. Иконки — images/abilities/<icon>.png (file:// — EMBED_ABILITIES).
 const HERO_ABILITIES = {
     rogue: [
-        { key: "fan", name: "Веерный бросок", icon: "rogue/14", cooldown: 8,
-          params: { count: 3, spread: 0.45, speed: 330, damage: 4, agiScale: 0.5 },
-          desc: "3 ножа веером по взгляду: 4 + ловкость/2 каждый." },
-        { key: "pull", name: "Крюк-кошка", icon: "rogue/12", cooldown: 10,
-          params: { range: 250, stopDist: 60, damage: 2, wisScale: 1 },
-          desc: "Притягивает ближайшего врага и наносит 2 + мудрости." },
-        { key: "haste", name: "Теневое скольжение", icon: "rogue/4", cooldown: 14,
-          params: { bonus: 30, dur: 4 },
-          desc: "+30% скорости передвижения на 4 секунды." },
+        { mech: "fan", node: 13, name: "Веерный бросок", icon: "rogue/14", cooldown: 8,
+          params: { count: 3, spread: 0.45, speed: 330, damage: 4, agiScale: 0.5 }, lvlDmg: 1 },
+        { mech: "pull", node: 11, name: "Крюк-кошка", icon: "rogue/12", cooldown: 10,
+          params: { range: 250, stopDist: 60, damage: 2, wisScale: 1 }, lvlDmg: 1 },
+        { mech: "haste", node: 4, name: "Теневое скольжение", icon: "rogue/4", cooldown: 14,
+          params: { bonus: 20, dur: 4 }, lvlBonus: 10 },
     ],
     sorca: [
-        { key: "fireball", name: "Огненный шар", icon: "sorca/13", cooldown: 5,
-          params: { damage: 6, spellPerWis: 1, range: 320, speed: 260 },
-          desc: "Снаряд в ближайшего врага: 6 + 1×мудрости." },
-        { key: "frost", name: "Мороз", icon: "sorca/7", cooldown: 12,
-          params: { damage: 4, spellScale: 0.5, radius: 150, slowMul: 0.5, slowT: 2.5 },
-          desc: "Волна холода вокруг: 4 + мудрость/2, замедляет на 2.5 с." },
-        { key: "meteor", name: "Метеорит", icon: "sorca/2", cooldown: 14,
-          params: { delay: 0.8, radius: 70, damage: 10, spellPerWis: 1, range: 280 },
-          desc: "Падает на ближайшего врага (≤280): 10 + мудрости по площади." },
+        { mech: "fireball", node: 0, name: "Огненный шар", icon: "sorca/13", cooldown: 5,
+          params: { damage: 6, spellPerWis: 1, range: 320, speed: 260 }, lvlDmg: 1 },
+        { mech: "frost", node: 1, name: "Мороз", icon: "sorca/7", cooldown: 12,
+          params: { damage: 4, spellScale: 0.5, radius: 150, slowMul: 0.5, slowT: 2.5 }, lvlDmg: 1 },
+        { mech: "meteor", node: 6, name: "Метеорит", icon: "sorca/2", cooldown: 14,
+          params: { delay: 0.8, radius: 70, damage: 10, spellPerWis: 1, range: 280 }, lvlDmg: 2 },
     ],
     knight: [
-        { key: "charge", name: "Заряженная атака", icon: "knight/4", cooldown: 7,
-          params: { dist: 96, hitR: 30, damage: 4, strScale: 1 },
-          desc: "Рывок сквозь строй: 4 + силы каждому задетому." },
-        { key: "heal", name: "Восстановление", icon: "knight/2", cooldown: 12,
-          params: { amount: 8, vitScale: 1.5 },
-          desc: "Лечит 8 + здоровье ×1.5 (выносливость усиливает)." },
-        { key: "execute", name: "Казнь", icon: "knight/14", cooldown: 20,
-          params: { range: 160, threshold: 0.35 },
-          desc: "Убивает врага рядом, если у него ≤35% здоровья." },
+        { mech: "charge", node: 4, name: "Заряженная атака", icon: "knight/4", cooldown: 7,
+          params: { dist: 96, hitR: 30, damage: 4, strScale: 1 }, lvlDmg: 1 },
+        { mech: "heal", node: 6, name: "Восстановление", icon: "knight/2", cooldown: 12,
+          params: { amount: 8, vitScale: 1.5 }, lvlHeal: 2 },
+        { mech: "execute", node: 13, name: "Казнь", icon: "knight/14", cooldown: 20,
+          params: { range: 160, threshold: 0.35 } },
     ],
     valca: [
-        { key: "dash", name: "Пронзающий рывок", icon: "valca/13", cooldown: 6,
-          params: { dist: 96, hitR: 30, damage: 2, moveScale: 0.5 },
-          desc: "Рывок по взгляду сквозь врагов: 2 + подвижность/2." },
-        { key: "haste", name: "Разгон", icon: "valca/7", cooldown: 12,
-          params: { bonus: 25, dur: 5 },
-          desc: "+25% скорости передвижения на 5 секунд." },
-        { key: "heal", name: "Аура восстановления", icon: "valca/3", cooldown: 14,
-          params: { amount: 6, vitScale: 1 },
-          desc: "Лечит 6 + здоровье (выносливость усиливает)." },
+        { mech: "dash", node: 0, name: "Пронзающий рывок", icon: "valca/13", cooldown: 6,
+          params: { dist: 96, hitR: 30, damage: 2, moveScale: 0.5 }, lvlDmg: 1 },
+        { mech: "haste", node: 1, name: "Разгон", icon: "valca/7", cooldown: 12,
+          params: { bonus: 25, dur: 5 }, lvlBonus: 5 },
+        { mech: "heal", node: 12, name: "Аура восстановления", icon: "valca/3", cooldown: 14,
+          params: { amount: 6, vitScale: 1 }, lvlHeal: 2 },
     ],
+};
+
+// ПАССИВКИ классов — узлы дерева с постоянными эффектами (бой — combat.js,
+// прочее — abilities.js). Ключ = индекс узла, значение = имя эффекта;
+// уровень узла = сила эффекта. Узлы дерева, НЕ попавшие ни в HERO_ABILITIES,
+// ни сюда — эффекты подземелий (ключи/комнаты/лут): в открытой зоне не
+// изучаются, в меню помечены «подземелья».
+const HERO_TREE_PASSIVES = {
+    rogue:   { 0: "poisonWeapon", 3: "backstab", 9: "killHeal" },
+    sorca:   { 5: "frostPoison", 12: "cdrFlat" },
+    knight:  { 0: "armor", 1: "thorns", 2: "dmgCap" },
+    valca:   { 5: "knockback" },
 };
 
 // Классы образца — ключ дерева (индекс в ABILITY_TREES) см. data/heroes.js
 globalThis.ABILITY_TREES = ABILITY_TREES;
 globalThis.HERO_ABILITIES = HERO_ABILITIES;
+globalThis.HERO_TREE_PASSIVES = HERO_TREE_PASSIVES;

@@ -36,7 +36,7 @@ const POISON_TICK = 1.0;   // яд тикает раз в секунду (1 ур
 
 function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
                         characters, projectiles, fx, onRemove = null, onKill = null,
-                        onDamaged = null }) {
+                        onDamaged = null, onLevelUp = null }) {
     if (!characters || !projectiles || !fx) throw new Error("createCombat: нужны characters, projectiles и fx");
     const clamp = (v, lo, hi) => (v < lo ? lo : (v > hi ? hi : v));
     // ХП — существующие компоненты health.js (повторная регистрация идемпотентна)
@@ -69,6 +69,11 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
             poisonT: 0, poisonTick: 0, poisonSrc: null,
             // замедление (способности): slowT — секунд осталось, slowMul — множитель
             slowT: 0, slowMul: 1,
+            // прогрессия героя: свободные очки и изученные узлы дерева
+            // (learned: индекс узла ABILITY_TREES → уровень; passives — плоский
+            // словарь эффектов для боевых хуков, собирает game.js/меню)
+            statPoints: 0, abilityPoints: 0,
+            learned: hero ? {} : null, passives: hero ? {} : null,
         };
         FACTION[id] = faction;
         ECS.addComponent(world, id, "hp", dop.hpMax);
@@ -141,7 +146,9 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
         );
     }
 
-    // ── РАЗРЕШЕНИЕ УДАРА: уклон → крит → блок → ХП → смерть/контратака ───────
+    // ── РАЗРЕШЕНИЕ УДАРА: уклон → крит → удар в спину → блок → броня →
+    // кап урона → ХП → яд/шипы/контратака ─────────────────────────────────────
+    const FACING_VEC = { front: [0, 1], back: [0, -1], left: [-1, 0], right: [1, 0] };
     function dealDamage(attackerId, targetId, { base, critPower = 150, melee = false }) {
         const t = STAT[targetId];
         if (!t || t.dead || !world.active[targetId]) return 0;
@@ -153,9 +160,20 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
         }
         // Крит бьющего: урон × мощь крита (в %, начало со 150)
         let dmg = base, crit = false;
-        if (STAT[attackerId] && Math.random() * 100 < STAT[attackerId].dop.crit) {
+        const a = STAT[attackerId];
+        if (a && Math.random() * 100 < a.dop.crit) {
             crit = true;
             dmg = Math.round(base * critPower / 100);
+        }
+        // Удар в спину (плут): атака melee со стороны, ПРОТИВОПОЛОЖНОЙ взгляду
+        // жертвы, усиливается на +50% за уровень узла
+        const ap = a && a.passives;
+        if (ap && ap.backstab && melee) {
+            const anim = DATA.ctrlAnim[targetId] || "walk_front";
+            const f = FACING_VEC[anim.slice(anim.lastIndexOf("_") + 1)] || FACING_VEC.front;
+            const ax = COMPONENTS.positionX[attackerId] - COMPONENTS.positionX[targetId];
+            const ay = COMPONENTS.positionY[attackerId] - COMPONENTS.positionY[targetId];
+            if (f[0] * ax + f[1] * ay < 0) dmg = Math.round(dmg * (1 + 0.5 * ap.backstab));
         }
         // Блок — шанс получить лишь половину урона
         const blocked = Math.random() * 100 < d.block;
@@ -163,17 +181,28 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
         // Каменная кожа цели: один удар не наносит больше special.stoneskin
         // (образец: orc «Один удар не наносит ему больше 12 урона»)
         if (t.special && t.special.stoneskin) dmg = Math.min(dmg, t.special.stoneskin);
+        // Пассивки защиты героя: броня (−N плоско) и Противодействие (кап урона)
+        const tp = t.passives;
+        if (tp) {
+            if (tp.armor) dmg = Math.max(1, dmg - tp.armor);
+            if (tp.dmgCap) dmg = Math.min(dmg, Math.max(1, 4 - tp.dmgCap));
+        }
         COMPONENTS.hp[targetId] = Math.max(0, COMPONENTS.hp[targetId] - dmg);
         floatText(targetId, crit ? `${dmg}!` : String(dmg),
             crit ? "#ffc531" : blocked ? "#9aa4ad" : "#ffffff",
             crit ? 28 : 22, crit ? 1.1 : 0.8);
-        // Отравление: атаки носителя special.poison накладывают тление
-        // (образец: паук «Атаки отравляют героя»; значение = секунд по 1 урона)
-        if (dmg > 0 && COMPONENTS.hp[targetId] > 0 && STAT[attackerId]
-            && STAT[attackerId].special && STAT[attackerId].special.poison) {
-            t.poisonT = Math.max(t.poisonT, STAT[attackerId].special.poison);
+        // Отравление: атаки носителя special.poison ИЛИ узла «Отравленное
+        // оружие» накладывают тление (значение = секунд по 1 урона)
+        const poison = (a && a.special && a.special.poison) || (ap && ap.poisonWeapon) || 0;
+        if (dmg > 0 && COMPONENTS.hp[targetId] > 0 && poison > 0) {
+            t.poisonT = Math.max(t.poisonT, poison);
             t.poisonTick = POISON_TICK;
             t.poisonSrc = attackerId;
+        }
+        // Аура возмездия (рыцарь): атакующий в melee получает ответный урон
+        if (tp && tp.thorns && COMPONENTS.hp[targetId] > 0
+            && a && !a.dead && COMPONENTS.hp[attackerId] > 0) {
+            dealDamage(targetId, attackerId, { base: tp.thorns });
         }
         // Событие «получен урон» (выжил): зов соратников у гоблинов и т.п.
         if (COMPONENTS.hp[targetId] > 0 && onDamaged) onDamaged(targetId, attackerId, dmg);
@@ -195,7 +224,8 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
         return dmg;
     }
 
-    // ── ОПЫТ И УРОВНИ: кривая xpToNext, рост основных статов, полный хил ─────
+    // ── ОПЫТ И УРОВНИ: кривая xpToNext. Герой за уровень получает по ОЧКУ
+    // характеристик и умений (распределяет сам в меню), враги не растут.
     function addXP(id, xp) {
         const s = STAT[id];
         if (!s || xp <= 0) return;
@@ -205,21 +235,67 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
             s.xp -= need;
             s.lvl += 1;
             const g = s.growth;
-            if (g) {
+            if (g && !s.hero) {
+                // враги не получают опыта, рост оставлен для будущих режимов
                 s.prim.str += g.str; s.prim.agi += g.agi; s.prim.vit += g.vit;
                 s.prim.spd += g.spd; s.prim.wis += g.wis;
+                s.dop = calcDop(s.prim);
+                COMPONENTS.maxHp[id] = s.dop.hpMax;
+                COMPONENTS.hp[id] = s.dop.hpMax;
+                COMPONENTS.ctrlSpeed[id] = s.baseSpeed * (1 + s.dop.move / 100);
             }
-            s.dop = calcDop(s.prim);
-            COMPONENTS.maxHp[id] = s.dop.hpMax;
-            COMPONENTS.hp[id] = s.dop.hpMax; // новый уровень — полное здоровье
-            COMPONENTS.ctrlSpeed[id] = s.baseSpeed * (1 + s.dop.move / 100);
-            floatText(id, `УРОВЕНЬ ${s.lvl}`, "#cc7dee", 28, 1.6);
+            if (s.hero) {
+                s.statPoints += 1;
+                s.abilityPoints += 1;
+                floatText(id, `УРОВЕНЬ ${s.lvl} · +1 очко`, "#cc7dee", 28, 1.6);
+                if (onLevelUp) onLevelUp(id, s.lvl);
+            } else {
+                floatText(id, `УРОВЕНЬ ${s.lvl}`, "#cc7dee", 28, 1.6);
+            }
             updateBar(id);
             need = xpToNext(s.lvl);
         }
     }
 
-    // Награда за убийство: только герою; обучаемость может удвоить опыт
+    // ── ПРОГРЕССИЯ ГЕРОЯ: распределение очка характеристики и изучение узла ──
+    // Очко стата: prim[key]++ → пересчёт вторичных статов; прибавка ХП идёт
+    // сверху текущего запаса (не лечит, но и не сгорает).
+    function allocateStat(id, key) {
+        const s = STAT[id];
+        if (!s || !s.hero || s.statPoints <= 0) return false;
+        if (!(key in s.prim)) return false;
+        const oldMax = s.dop.hpMax;
+        s.prim[key] += 1;
+        s.statPoints -= 1;
+        s.dop = calcDop(s.prim);
+        const gain = s.dop.hpMax - oldMax;
+        if (gain > 0) {
+            COMPONENTS.maxHp[id] = s.dop.hpMax;
+            COMPONENTS.hp[id] = Math.min(s.dop.hpMax, COMPONENTS.hp[id] + gain);
+        }
+        const slow = s.slowT > 0 ? s.slowMul : 1;
+        COMPONENTS.ctrlSpeed[id] = s.baseSpeed * (1 + s.dop.move / 100) * slow;
+        updateBar(id);
+        return true;
+    }
+
+    // Изучение узла дерева (валидация узла — на вызывающей стороне, здесь
+    // проверяются очки, требование предков и потолок уровня узла).
+    // prev — достаточно ОДНОГО изучённого предка (OR): часть узлов образца —
+    // «подземельные» эффекты, они изучаются как проводка дерева, но в открытой
+    // зоне ничего не дают.
+    function learn(id, idx, maxLvl, prev = []) {
+        const s = STAT[id];
+        if (!s || !s.hero || s.abilityPoints <= 0) return 0;
+        if ((s.learned[idx] || 0) >= maxLvl) return 0;
+        if (prev.length && !prev.some((p) => (s.learned[p] || 0) > 0)) return 0;
+        s.abilityPoints -= 1;
+        s.learned[idx] = (s.learned[idx] || 0) + 1;
+        return s.learned[idx];
+    }
+
+    // Награда за убийство: только герою; обучаемость может удвоить опыт;
+    // «Облик мстителя» лечит за убийство базовой атакой
     function awardKill(killerId, victimId) {
         const k = STAT[killerId], v = STAT[victimId];
         if (!k || !v || !k.hero || !v.xpReward) return;
@@ -227,6 +303,7 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
         const xp = v.xpReward * (doubled ? 2 : 1);
         addXP(killerId, xp);
         floatText(killerId, `+${xp} оп${doubled ? " ×2" : ""}`, "#a8e05f");
+        if (k.passives && k.passives.killHeal) heal(killerId, k.passives.killHeal);
         if (onKill) onKill(killerId, victimId); // событие для квестов и ачивок
     }
 
@@ -309,6 +386,16 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
         s.slowT = Math.max(s.slowT, dur);
         s.slowMul = mul;
         COMPONENTS.ctrlSpeed[id] = s.baseSpeed * (1 + s.dop.move / 100) * mul;
+    }
+
+    // ── ЯД (способности/пассивки): seconds секунд по 1 урона; источник получает
+    // убийство, если яд добьёт. Прямой аналог special.poison из удара.
+    function applyPoison(id, seconds, sourceId) {
+        const s = STAT[id];
+        if (!s || s.dead || !world.active[id] || seconds <= 0) return;
+        s.poisonT = Math.max(s.poisonT, seconds);
+        s.poisonTick = POISON_TICK;
+        s.poisonSrc = sourceId;
     }
 
     // Живые противники фракции (персонажи чужой фракции)
@@ -432,8 +519,8 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
     if (addSystem) addSystem(update);
 
     return { init, stat, dopOf, factionOf, alive, hpRatio, xpRatio,
-             rollAttack, dealDamage, heal, giveXp, applySlow, targetsOf,
-             revive, update };
+             rollAttack, dealDamage, heal, giveXp, applySlow, applyPoison,
+             targetsOf, allocateStat, learn, revive, update };
 }
 
 // Подключение двумя способами (файл без import/export валиден и как ES-модуль):
