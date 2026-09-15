@@ -30,7 +30,7 @@ const MELEE_HIT_R = 40;    // радиус разового АоЕ оружия 
 const RESPAWN_DELAY = 2.5; // секунд до возрождения героя
 
 function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
-                        characters, projectiles, fx, onRemove = null }) {
+                        characters, projectiles, fx, onRemove = null, onKill = null }) {
     if (!characters || !projectiles || !fx) throw new Error("createCombat: нужны characters, projectiles и fx");
     const clamp = (v, lo, hi) => (v < lo ? lo : (v > hi ? hi : v));
     // ХП — существующие компоненты health.js (повторная регистрация идемпотентна)
@@ -201,6 +201,7 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
         const xp = v.xpReward * (doubled ? 2 : 1);
         addXP(killerId, xp);
         floatText(killerId, `+${xp} оп${doubled ? " ×2" : ""}`, "#a8e05f");
+        if (onKill) onKill(killerId, victimId); // событие для квестов и ачивок
     }
 
     // ── СМЕРТЬ: анимация death держит последний кадр, корпус тает ────────────

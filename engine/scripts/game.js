@@ -53,7 +53,7 @@
 
     // ===== HUD: подсказка (статус загрузки — на экране загрузки ниже) =========
     const hud = createHUD({ app, addSystem }); // addSystem — автообновление bar()-ов
-    const hintLabel = hud.text("hint", "WASD/стрелки/джойстик — движение | атака автоматическая | колесо — зум | P — пауза", {
+    const hintLabel = hud.text("hint", "WASD/стрелки/джойстик — движение | атака автоматическая | колесо — зум | P — пауза | L — задания", {
         x: 16, y: 12, size: 24, color: "#88ffcc",
     });
     hintLabel.visible = false; // в стартовом меню подсказка не нужна
@@ -414,6 +414,7 @@
     // снаряд получает снимок боевых данных владельца (фракция, бросок урона) —
     // combat создаётся ниже, поэтому колбэки ссылается на него через let.
     let combat = null;
+    let quests = null; // квесты создаются после боя (колбэк onKill ниже)
     const projectiles = createProjectiles({
         world, ECS, COMPONENTS, DATA, addSystem, assets, rows, TS,
         getFaction: (id) => (combat ? combat.factionOf(id) : -1),
@@ -435,6 +436,13 @@
             if (k !== -1) { creatureRowTrack.splice(k, 1); creatureRowCache.splice(k, 1); }
             const e = enemies.findIndex((en) => en.id === id);
             if (e !== -1) enemies.splice(e, 1);
+        },
+        // Убийство героем — событие квестов: вид жертвы берём из enemies (жертва
+        // покинет список позже, при уборке трупа, а событие приходит в момент смерти)
+        onKill(killerId, victimId) {
+            if (!quests) return;
+            const en = enemies.find((e) => e.id === victimId);
+            if (en) quests.notifyKill(en.name);
         },
     });
     const wolfId = characters.spawn({
@@ -469,8 +477,17 @@
     placeHeroHud();
     app.renderer.on("resize", placeHeroHud);
     hud.container.addChild(heroHpBar.root, heroXpBar.root);
-    hud.container.addChild(heroHpBar.root, heroXpBar.root);
-    hud.container.addChild(heroHpBar.root, heroXpBar.root);
+
+    // ===== Квесты: цепочка заданий (data/quests.js + modules/quests.js) ========
+    // Убийства героем приходят событиями от combat (onKill выше), уровень героя
+    // модуль опрашивает сам, награды выдаёт через combat.giveXp. Интерфейс:
+    // трекер под полосками ХП/опыта, журнал (L), объявления сверху экрана;
+    // в сцене меню прячется. Тик — только в игровой сцене (ниже).
+    quests = createQuests({
+        app, combat, fx, heroId: wolfId,
+        heroPos: () => ({ x: COMPONENTS.positionX[wolfId], y: COMPONENTS.positionY[wolfId] }),
+    });
+    app.renderer.on("resize", quests.place);
     // Герой ходит по «рядам ног» объектов: между рядами порядок задают
     // контейнеры, внутри ряда героя каждый кадр пересортировывает его zIndex
     // (ставит система персонажей). Ряды героя — единственное, что тасуется.
@@ -704,6 +721,7 @@
         enter() {
             hud.removeText("pauseLabel");
             hintLabel.visible = true;
+            quests.show(true);
             debug.info["Сцена"] = "game";
         },
         update(ticker) {
@@ -734,6 +752,11 @@
                 camera.setZoom(Math.min(4, Math.max(0.5, camera.cam.zoom)));
             }
             if (input.wasPressed("KeyP")) scenes.go("pause");
+            // Журнал заданий: L — открыть/закрыть, Escape закрывает открытый
+            if (input.wasPressed("KeyL") || (quests.isLogOpen() && input.wasPressed("Escape"))) {
+                quests.toggleLog();
+            }
+            quests.update(ticker); // «достичь уровня» + очередь объявлений квестов
             // Оверлей отладки: параметры мира и живое состояние сущности из компонентов
             debug.info["Сид"] = SEED;
             debug.info["Карта"] = `${W}×${H}, объектов ${gen.placements.length}, POI ${gen.pois.length}`;
@@ -760,6 +783,7 @@
         },
         update() {
             if (input.wasPressed("KeyP")) scenes.go("game");
+            if (input.wasPressed("KeyL")) quests.toggleLog(); // журнал читаем и в паузе
             input.endFrame();
         },
     });
@@ -768,11 +792,13 @@
             placeMenu(); // пересчёт раскладки: размер панели мог измениться со старта
             menuUi.visible = true;
             hintLabel.visible = false;
+            quests.show(false); // интерфейс квестов в меню не нужен
             debug.info["Сцена"] = "menu";
         },
         exit() {
             menuUi.visible = false;
             hintLabel.visible = true;
+            quests.show(true);
         },
         update() {
             if (settingsOpen && input.wasPressed("Escape")) closeSettings();
@@ -788,7 +814,8 @@
     // ===== Хендл для автотестов из консоли браузера =====
     window.__TEST = {
         wolfId, characters, camera, input, scenes, blocked, tiles, tilesHolder, bake: cornerTex,
-        components: COMPONENTS, data: DATA, enemies, ai, projectiles, combat,
+        components: COMPONENTS, data: DATA, enemies, ai, projectiles, combat, quests,
+        questState: () => quests.snapshot(),
         heroStat: () => combat.stat(wolfId),
         heroDop: () => combat.dopOf(wolfId),
         giveXp: (n) => combat.giveXp(wolfId, n),
