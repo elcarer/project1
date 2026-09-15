@@ -765,6 +765,7 @@
     });
     scenes.add("menu", {
         enter() {
+            placeMenu(); // пересчёт раскладки: размер панели мог измениться со старта
             menuUi.visible = true;
             hintLabel.visible = false;
             debug.info["Сцена"] = "menu";
