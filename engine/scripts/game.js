@@ -53,9 +53,10 @@
 
     // ===== HUD: подсказка (статус загрузки — на экране загрузки ниже) =========
     const hud = createHUD({ app, addSystem }); // addSystem — автообновление bar()-ов
-    hud.text("hint", "WASD/стрелки/джойстик — движение | атака автоматическая | колесо — зум | P — пауза", {
+    const hintLabel = hud.text("hint", "WASD/стрелки/джойстик — движение | атака автоматическая | колесо — зум | P — пауза", {
         x: 16, y: 12, size: 24, color: "#88ffcc",
     });
+    hintLabel.visible = false; // в стартовом меню подсказка не нужна
     const frame = () => new Promise((r) => requestAnimationFrame(r)); // дать статусу отрисоваться
 
     // На file:// картинка с диска — чужой origin: WebGL не грузит её в GPU,
@@ -77,6 +78,7 @@
     for (const [key, base] of [
         ["bar", "bigBar"], ["line", "loadBarLine"],
         ["hpLine", "hpBarLine"], ["xpFrame", "smallBar"],
+        ["startBg", "start"], ["btn", "button"],
     ]) {
         uiTex[key] = FILE_MODE
             ? await assets.textureFromDataURL(EMBED.ui[base])
@@ -120,6 +122,122 @@
         barLabel.text = s;
         loader.set(loadRatio);
     };
+
+    // ===== Стартовое меню: фон start.png + кнопки button.png ====================
+    // Показывается после загрузки мира (сцена "menu"); «Продолжить»/«Новая
+    // игра» открывают мир, «Настройки» — панель с полноэкранным режимом,
+    // «Выход» закрывает вкладку (иначе — экран завершения).
+    app.stage.eventMode = "static"; // кнопкам меню нужны pointer-события
+    const menuUi = new PIXI.Container();
+    menuUi.visible = false; // откроется в сцене "menu" после загрузки мира
+    app.stage.addChild(menuUi);
+    const startBg = new PIXI.Sprite(uiTex.startBg);
+    menuUi.addChild(startBg);
+    const menuButtons = []; // контейнеры кнопок — для раскладки при resize
+    const makeMenuButton = (label, onTap, width = 280, column = true) => {
+        const btn = new PIXI.Container();
+        const bg = new PIXI.NineSliceSprite({
+            texture: uiTex.btn, left: 14, right: 14, top: 14, bottom: 14, width, height: 60,
+        });
+        const txt = new PIXI.Text({
+            text: label,
+            style: { fontFamily: GAME_FONT, fontSize: 26, fill: "#f0e6c8" },
+        });
+        txt.anchor.set(0.5);
+        txt.position.set(width / 2, 30);
+        bg.eventMode = "static";
+        bg.cursor = "pointer";
+        bg.on("pointerenter", () => { bg.tint = 0xffd98e; });
+        bg.on("pointerleave", () => { bg.tint = 0xffffff; });
+        bg.on("pointertap", onTap);
+        btn.addChild(bg, txt);
+        btn.labelText = txt;
+        if (column) menuButtons.push(btn); // кнопки панели настроек не в раскладке
+        return btn;
+    };
+    // Раскладка: фон «cover» на весь экран, колонка кнопок слева (там лес,
+    // не заслоняя героев арта); вызывается при построении и при resize
+    const placeMenu = () => {
+        const s = Math.max(app.screen.width / startBg.texture.width,
+            app.screen.height / startBg.texture.height);
+        startBg.scale.set(s);
+        startBg.position.set(
+            (app.screen.width - startBg.texture.width * s) / 2,
+            (app.screen.height - startBg.texture.height * s) / 2,
+        );
+        const bx = Math.max(24, Math.round(app.screen.width * 0.08));
+        let by = Math.round(app.screen.height * 0.38);
+        for (const btn of menuButtons) {
+            btn.position.set(bx, by);
+            by += 74;
+        }
+        if (menuUi.quitOverlay) {
+            menuUi.quitOverlay.children[0].width = app.screen.width;
+            menuUi.quitOverlay.children[0].height = app.screen.height;
+            menuUi.quitOverlay.children[1].position.set(app.screen.width / 2, app.screen.height / 2);
+        }
+        if (menuUi.settings) {
+            menuUi.settings.children[0].position.set(
+                (app.screen.width - 400) / 2, (app.screen.height - 230) / 2);
+        }
+    };
+    // Панель настроек: полноэкранный режим + назад
+    let settingsOpen = false;
+    const settingsPanel = new PIXI.Container();
+    const settingsBg = new PIXI.Graphics()
+        .roundRect(0, 0, 400, 230, 10).fill(0x140f08).stroke({ width: 3, color: 0x6b4a2f });
+    settingsPanel.addChild(settingsBg);
+    settingsPanel.visible = false;
+    const toggleFullscreen = () => {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else document.documentElement.requestFullscreen();
+    };
+    const menuOff = () => { menuUi.visible = false; settingsPanel.visible = false; settingsOpen = false; };
+    const openSettings = () => { settingsOpen = true; settingsPanel.visible = true; };
+    const closeSettings = () => { settingsOpen = false; settingsPanel.visible = false; };
+    const newGame = () => {
+        // новый мир: та же карта по размеру, случайный сид
+        location.href = location.pathname + "?w=" + W + "&h=" + H +
+            "&seed=" + Math.floor(Math.random() * 2147483647);
+    };
+    const quitGame = () => {
+        window.close();
+        // если вкладку закрыть не дали — экран завершения поверх всего
+        if (!window.closed) {
+            menuUi.visible = false;
+            if (!menuUi.quitOverlay) {
+                const q = new PIXI.Container();
+                const bg = new PIXI.Graphics().rect(0, 0, app.screen.width, app.screen.height).fill(0x000000);
+                const label = new PIXI.Text({
+                    text: "Игра завершена.\nОбновите страницу, чтобы сыграть снова.",
+                    style: { fontFamily: GAME_FONT, fontSize: 28, fill: "#cfc4a6", align: "center", lineHeight: 40 },
+                });
+                label.anchor.set(0.5);
+                q.addChild(bg, label);
+                menuUi.quitOverlay = q;
+                menuUi.addChild(q);
+                placeMenu();
+            }
+            menuUi.quitOverlay.visible = true;
+        }
+    };
+    // Кнопки меню (в колонку слева) и панели настроек (внутри, не в раскладку)
+    menuUi.addChild(
+        makeMenuButton("Продолжить", () => { menuOff(); scenes.go("game"); }),
+        makeMenuButton("Новая игра", newGame),
+        makeMenuButton("Настройки", openSettings),
+        makeMenuButton("Выход", quitGame),
+    );
+    const fsButton = makeMenuButton("Полный экран: вкл", () => { toggleFullscreen(); syncFsLabel(); }, 280, false);
+    const syncFsLabel = () => { fsButton.labelText.text = document.fullscreenElement ? "Полный экран: выкл" : "Полный экран: вкл"; };
+    document.addEventListener("fullscreenchange", syncFsLabel);
+    fsButton.position.set(10, 35);
+    const backButton = makeMenuButton("Назад", closeSettings, 280, false);
+    backButton.position.set(10, 135);
+    settingsPanel.addChild(fsButton, backButton);
+    menuUi.addChild(settingsPanel);
+    placeMenu();
+    app.renderer.on("resize", placeMenu);
 
     // ===== Текстуры тайлсетов =====
     setStage("загрузка тайлсетов…", 0.02);
@@ -585,6 +703,7 @@
     scenes.add("game", {
         enter() {
             hud.removeText("pauseLabel");
+            hintLabel.visible = true;
             debug.info["Сцена"] = "game";
         },
         update(ticker) {
@@ -644,7 +763,22 @@
             input.endFrame();
         },
     });
-    scenes.go("game");
+    scenes.add("menu", {
+        enter() {
+            menuUi.visible = true;
+            hintLabel.visible = false;
+            debug.info["Сцена"] = "menu";
+        },
+        exit() {
+            menuUi.visible = false;
+            hintLabel.visible = true;
+        },
+        update() {
+            if (settingsOpen && input.wasPressed("Escape")) closeSettings();
+            input.endFrame();
+        },
+    });
+    scenes.go("menu"); // мир загружен — ждём выбора игрока
     loader.root.destroy({ children: true }); // экран загрузки больше не нужен
 
     console.log(`[game] мир ${W}×${H} сид ${SEED}: объектов ${gen.placements.length}, POI ${gen.pois.length}; ` +
