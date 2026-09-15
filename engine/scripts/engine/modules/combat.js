@@ -67,6 +67,8 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
             flashT: 0, ctrGuardT: 0, bar: null,
             // яд: poisonT — сколько секунд тлеть, poisonSrc — кто отравил
             poisonT: 0, poisonTick: 0, poisonSrc: null,
+            // замедление (способности): slowT — секунд осталось, slowMul — множитель
+            slowT: 0, slowMul: 1,
         };
         FACTION[id] = faction;
         ECS.addComponent(world, id, "hp", dop.hpMax);
@@ -298,6 +300,17 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
 
     function giveXp(id, xp) { addXP(id, xp); }
 
+    // ── ЗАМЕДЛЕНИЕ (способности, modules/abilities.js): скорость пересчитывается
+    // из базовой на время действия. Приближение: буст погони ИИ (×1.25) на время
+    // замедления пропадает — при переходах FSM скорость всё равно перезаписывается.
+    function applySlow(id, mul, dur) {
+        const s = STAT[id];
+        if (!s || s.dead || !world.active[id] || dur <= 0) return;
+        s.slowT = Math.max(s.slowT, dur);
+        s.slowMul = mul;
+        COMPONENTS.ctrlSpeed[id] = s.baseSpeed * (1 + s.dop.move / 100) * mul;
+    }
+
     // Живые противники фракции (персонажи чужой фракции)
     function targetsOf(faction) {
         const out = [];
@@ -384,6 +397,13 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
                     }
                 }
             }
+            // Замедление: по истечении — скорость из базовой (без множителя)
+            if (s.slowT > 0) {
+                s.slowT -= dt;
+                if (s.slowT <= 0) {
+                    COMPONENTS.ctrlSpeed[id] = s.baseSpeed * (1 + s.dop.move / 100);
+                }
+            }
             if (!s.dead) continue;
             if (s.hero) {
                 if (s.deathDone) {
@@ -412,7 +432,8 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
     if (addSystem) addSystem(update);
 
     return { init, stat, dopOf, factionOf, alive, hpRatio, xpRatio,
-             rollAttack, dealDamage, heal, giveXp, revive, update };
+             rollAttack, dealDamage, heal, giveXp, applySlow, targetsOf,
+             revive, update };
 }
 
 // Подключение двумя способами (файл без import/export валиден и как ES-модуль):

@@ -53,7 +53,7 @@
 
     // ===== HUD: подсказка (статус загрузки — на экране загрузки ниже) =========
     const hud = createHUD({ app, addSystem }); // addSystem — автообновление bar()-ов
-    const hintLabel = hud.text("hint", "WASD/стрелки/джойстик — движение | атака автоматическая | колесо — зум | P — пауза | L — задания", {
+    const hintLabel = hud.text("hint", "WASD/стрелки/джойстик — движение | атака автоматическая | колесо — зум | P — пауза | L — задания | 1–3 — умения", {
         x: 16, y: 12, size: 24, color: "#88ffcc",
     });
     hintLabel.visible = false; // в стартовом меню подсказка не нужна
@@ -495,6 +495,18 @@
         heroPos: () => ({ x: COMPONENTS.positionX[wolfId], y: COMPONENTS.positionY[wolfId] }),
     });
     app.renderer.on("resize", quests.place);
+
+    // ===== Способности героя: панель слотов 1–3 (modules/abilities.js) ========
+    // Боевой набор — WOLF_ABILITIES (data/abilities.js): Огненный шар,
+    // Пронзающий рывок, Мороз — адаптации умений образца. Панель внизу по
+    // центру; кулдауны тикают только в игровой сцене (ниже), в меню панель
+    // прячется. Иконки: по http — живые файлы, на file:// — вшитые data-URL.
+    const abilities = createAbilities({
+        app, combat, characters, projectiles, fx, assets,
+        heroId: wolfId, blocked, COMPONENTS, DATA,
+    });
+    await abilities.load({ fileMode: FILE_MODE, embed: globalThis.EMBED_ABILITIES || null });
+    app.renderer.on("resize", abilities.place);
     // Герой ходит по «рядам ног» объектов: между рядами порядок задают
     // контейнеры, внутри ряда героя каждый кадр пересортировывает его zIndex
     // (ставит система персонажей). Ряды героя — единственное, что тасуется.
@@ -732,6 +744,7 @@
             hud.removeText("pauseLabel");
             hintLabel.visible = true;
             quests.show(true);
+            abilities.show(true);
             debug.info["Сцена"] = "game";
         },
         update(ticker) {
@@ -767,6 +780,11 @@
                 quests.toggleLog();
             }
             quests.update(ticker); // «достичь уровня» + очередь объявлений квестов
+            // Способности: клавиши 1–3 — каст, тик кулдаунов (в паузе замирают)
+            if (input.wasPressed("Digit1")) abilities.use(0);
+            if (input.wasPressed("Digit2")) abilities.use(1);
+            if (input.wasPressed("Digit3")) abilities.use(2);
+            abilities.update(ticker);
             // Оверлей отладки: параметры мира и живое состояние сущности из компонентов
             debug.info["Сид"] = SEED;
             debug.info["Карта"] = `${W}×${H}, объектов ${gen.placements.length}, POI ${gen.pois.length}`;
@@ -803,12 +821,14 @@
             menuUi.visible = true;
             hintLabel.visible = false;
             quests.show(false); // интерфейс квестов в меню не нужен
+            abilities.show(false); // панель умений тоже
             debug.info["Сцена"] = "menu";
         },
         exit() {
             menuUi.visible = false;
             hintLabel.visible = true;
             quests.show(true);
+            abilities.show(true);
         },
         update() {
             if (settingsOpen && input.wasPressed("Escape")) closeSettings();
@@ -825,6 +845,7 @@
     window.__TEST = {
         wolfId, characters, camera, input, scenes, blocked, tiles, tilesHolder, bake: cornerTex,
         components: COMPONENTS, data: DATA, enemies, ai, projectiles, combat, quests,
+        abilities, abilitiesState: () => abilities.snapshot(),
         questState: () => quests.snapshot(),
         heroStat: () => combat.stat(wolfId),
         heroDop: () => combat.dopOf(wolfId),

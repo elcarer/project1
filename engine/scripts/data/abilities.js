@@ -141,5 +141,28 @@ const ABILITY_TREES = [
     ],
 ];
 
+// БОЕВОЙ НАБОР ВОЛКА — активные умения героя (слоты с клавишами 1–3),
+// адаптация умений образца под масштаб нашего боя. Механика —
+// modules/abilities.js; иконки — images/abilities/<icon>.png (на file://
+// вшиты в embedded_abilities.js — генератор make_embedded_abilities.py).
+// spellPower героя = мудрость (calcDop), подвижность = % скорости (dop.move).
+const WOLF_ABILITIES = [
+    { key: "fireball", name: "Огненный шар", icon: "sorca/13", cooldown: 5,
+      // образец: умение Волшебницы «Создаёт огненный шар, поражающий
+      // ближайшего врага»; урон усилен силой воли
+      params: { damage: 6, spellPerWis: 1, range: 320, speed: 260 },
+      desc: "Снаряд в ближайшего врага: 6 + 1×силы воли." },
+    { key: "dash", name: "Пронзающий рывок", icon: "valca/13", cooldown: 6,
+      // образец: умение Валькирии «Рывок сквозь врагов… Урон от Подвижности»
+      params: { dist: 96, hitR: 30, damage: 2, moveScale: 0.5 },
+      desc: "Рывок по взгляду сквозь врагов: 2 + подвижность/2." },
+    { key: "frost", name: "Мороз", icon: "sorca/7", cooldown: 12,
+      // образец: умение Волшебницы «Наносит урон и замораживает окружающих
+      // врагов»; у нас замедление (полного стопа в движке нет)
+      params: { damage: 4, spellScale: 0.5, radius: 150, slowMul: 0.5, slowT: 2.5 },
+      desc: "Волна холода вокруг: 4 + мудрость/2, замедляет на 2.5 с." },
+];
+
 // Классы образца — ключ дерева (индекс в ABILITY_TREES) см. data/heroes.js
 globalThis.ABILITY_TREES = ABILITY_TREES;
+globalThis.WOLF_ABILITIES = WOLF_ABILITIES;
