@@ -141,28 +141,60 @@ const ABILITY_TREES = [
     ],
 ];
 
-// БОЕВОЙ НАБОР ВОЛКА — активные умения героя (слоты с клавишами 1–3),
-// адаптация умений образца под масштаб нашего боя. Механика —
-// modules/abilities.js; иконки — images/abilities/<icon>.png (на file://
-// вшиты в embedded_abilities.js — генератор make_embedded_abilities.py).
-// spellPower героя = мудрость (calcDop), подвижность = % скорости (dop.move).
-const WOLF_ABILITIES = [
-    { key: "fireball", name: "Огненный шар", icon: "sorca/13", cooldown: 5,
-      // образец: умение Волшебницы «Создаёт огненный шар, поражающий
-      // ближайшего врага»; урон усилен силой воли
-      params: { damage: 6, spellPerWis: 1, range: 320, speed: 260 },
-      desc: "Снаряд в ближайшего врага: 6 + 1×силы воли." },
-    { key: "dash", name: "Пронзающий рывок", icon: "valca/13", cooldown: 6,
-      // образец: умение Валькирии «Рывок сквозь врагов… Урон от Подвижности»
-      params: { dist: 96, hitR: 30, damage: 2, moveScale: 0.5 },
-      desc: "Рывок по взгляду сквозь врагов: 2 + подвижность/2." },
-    { key: "frost", name: "Мороз", icon: "sorca/7", cooldown: 12,
-      // образец: умение Волшебницы «Наносит урон и замораживает окружающих
-      // врагов»; у нас замедление (полного стопа в движке нет)
-      params: { damage: 4, spellScale: 0.5, radius: 150, slowMul: 0.5, slowT: 2.5 },
-      desc: "Волна холода вокруг: 4 + мудрость/2, замедляет на 2.5 с." },
-];
+// БОЕВЫЕ НАБОРЫ ГЕРОЕВ — активные умения по классам (слоты с клавишами 1–3),
+// адаптации умений образца под масштаб нашего боя (по 3 на класс, всего
+// 8 механик: fireball/frost/meteor/dash/charge/fan/pull/haste/heal/execute).
+// Механика — modules/abilities.js; иконки — images/abilities/<icon>.png
+// (на file:// вшиты в embedded_abilities.js — make_embedded_abilities.py).
+// Формулы урона: мудрость = dop.spellPower, ловкость/сила/выносливость —
+// prim героя, подвижность = dop.move.
+const HERO_ABILITIES = {
+    rogue: [
+        { key: "fan", name: "Веерный бросок", icon: "rogue/14", cooldown: 8,
+          params: { count: 3, spread: 0.45, speed: 330, damage: 4, agiScale: 0.5 },
+          desc: "3 ножа веером по взгляду: 4 + ловкость/2 каждый." },
+        { key: "pull", name: "Крюк-кошка", icon: "rogue/12", cooldown: 10,
+          params: { range: 250, stopDist: 60, damage: 2, wisScale: 1 },
+          desc: "Притягивает ближайшего врага и наносит 2 + мудрости." },
+        { key: "haste", name: "Теневое скольжение", icon: "rogue/4", cooldown: 14,
+          params: { bonus: 30, dur: 4 },
+          desc: "+30% скорости передвижения на 4 секунды." },
+    ],
+    sorca: [
+        { key: "fireball", name: "Огненный шар", icon: "sorca/13", cooldown: 5,
+          params: { damage: 6, spellPerWis: 1, range: 320, speed: 260 },
+          desc: "Снаряд в ближайшего врага: 6 + 1×мудрости." },
+        { key: "frost", name: "Мороз", icon: "sorca/7", cooldown: 12,
+          params: { damage: 4, spellScale: 0.5, radius: 150, slowMul: 0.5, slowT: 2.5 },
+          desc: "Волна холода вокруг: 4 + мудрость/2, замедляет на 2.5 с." },
+        { key: "meteor", name: "Метеорит", icon: "sorca/2", cooldown: 14,
+          params: { delay: 0.8, radius: 70, damage: 10, spellPerWis: 1, range: 280 },
+          desc: "Падает на ближайшего врага (≤280): 10 + мудрости по площади." },
+    ],
+    knight: [
+        { key: "charge", name: "Заряженная атака", icon: "knight/4", cooldown: 7,
+          params: { dist: 96, hitR: 30, damage: 4, strScale: 1 },
+          desc: "Рывок сквозь строй: 4 + силы каждому задетому." },
+        { key: "heal", name: "Восстановление", icon: "knight/2", cooldown: 12,
+          params: { amount: 8, vitScale: 1.5 },
+          desc: "Лечит 8 + здоровье ×1.5 (выносливость усиливает)." },
+        { key: "execute", name: "Казнь", icon: "knight/14", cooldown: 20,
+          params: { range: 160, threshold: 0.35 },
+          desc: "Убивает врага рядом, если у него ≤35% здоровья." },
+    ],
+    valca: [
+        { key: "dash", name: "Пронзающий рывок", icon: "valca/13", cooldown: 6,
+          params: { dist: 96, hitR: 30, damage: 2, moveScale: 0.5 },
+          desc: "Рывок по взгляду сквозь врагов: 2 + подвижность/2." },
+        { key: "haste", name: "Разгон", icon: "valca/7", cooldown: 12,
+          params: { bonus: 25, dur: 5 },
+          desc: "+25% скорости передвижения на 5 секунд." },
+        { key: "heal", name: "Аура восстановления", icon: "valca/3", cooldown: 14,
+          params: { amount: 6, vitScale: 1 },
+          desc: "Лечит 6 + здоровье (выносливость усиливает)." },
+    ],
+};
 
 // Классы образца — ключ дерева (индекс в ABILITY_TREES) см. data/heroes.js
 globalThis.ABILITY_TREES = ABILITY_TREES;
-globalThis.WOLF_ABILITIES = WOLF_ABILITIES;
+globalThis.HERO_ABILITIES = HERO_ABILITIES;

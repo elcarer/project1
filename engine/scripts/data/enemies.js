@@ -46,6 +46,9 @@ const ENEMY_BESTIARY = [
       hp: 10, dmg: [3, 5], exp: 4, speed: 5, range: 7, special: null, desc: "" },
     { key: "rat", name: "Крыса", tier: "common", attack: "bite",       // «Укус»
       hp: 1, dmg: [1, 2], exp: 1, speed: 12, range: 12, special: null, desc: "Голодная." },
+    { key: "wolf", name: "Волк", tier: "common", attack: "bite",       // «Укус»
+      hp: 25, dmg: [4, 8], exp: 4, speed: 11, range: 6, special: null,
+      desc: "Быстрый лесной хищник. Прежний герой этих земель — теперь охотится в стае." },
     { key: "dwarf", name: "Дворф", tier: "common", attack: "axe",      // «Рубка»
       hp: 20, dmg: [4, 7], exp: 1, speed: 9, range: 6, special: null, desc: "" },
     { key: "lider", name: "Лидер гоблинов", tier: "boss", attack: "alebard", // «Разрубание»

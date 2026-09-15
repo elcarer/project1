@@ -53,7 +53,7 @@
 
     // ===== HUD: подсказка (статус загрузки — на экране загрузки ниже) =========
     const hud = createHUD({ app, addSystem }); // addSystem — автообновление bar()-ов
-    const hintLabel = hud.text("hint", "WASD/стрелки/джойстик — движение | атака автоматическая | колесо — зум | P — пауза | L — задания | 1–3 — умения", {
+    const hintLabel = hud.text("hint", "WASD — движение | бой авто | колесо — зум | P — пауза | L — задания | 1–3 — умения", {
         x: 16, y: 12, size: 24, color: "#88ffcc",
     });
     hintLabel.visible = false; // в стартовом меню подсказка не нужна
@@ -145,11 +145,15 @@
         });
         txt.anchor.set(0.5);
         txt.position.set(width / 2, 30);
-        bg.eventMode = "static";
-        bg.cursor = "pointer";
-        bg.on("pointerenter", () => { bg.tint = 0xffd98e; });
-        bg.on("pointerleave", () => { bg.tint = 0xffffff; });
-        bg.on("pointertap", onTap);
+        // ЛОВУШКА v8: NineSliceSprite в минифицированном билде НЕ хит-тестится
+        // (containsPoint всегда false — проверено hitTest'ом). Интерактивность
+        // вешаем на КОНТЕЙНЕР кнопки с явным hitArea, фон остаётся картинкой.
+        btn.eventMode = "static";
+        btn.cursor = "pointer";
+        btn.hitArea = new PIXI.Rectangle(0, 0, width, 60);
+        btn.on("pointerenter", () => { bg.tint = 0xffd98e; });
+        btn.on("pointerleave", () => { bg.tint = 0xffffff; });
+        btn.on("pointertap", onTap);
         btn.addChild(bg, txt);
         btn.labelText = txt;
         if (column) menuButtons.push(btn); // кнопки панели настроек не в раскладке
@@ -196,9 +200,23 @@
     const openSettings = () => { settingsOpen = true; settingsPanel.visible = true; };
     const closeSettings = () => { settingsOpen = false; settingsPanel.visible = false; };
     const newGame = () => {
-        // новый мир: та же карта по размеру, случайный сид
+        // новый мир: та же карта по размеру, случайный сид; после загрузки —
+        // ЛОББИ выбора героя (флаг читается при буте)
+        sessionStorage.setItem("pickHero", "1");
         location.href = location.pathname + "?w=" + W + "&h=" + H +
             "&seed=" + Math.floor(Math.random() * 2147483647);
+    };
+    // «Продолжить»: герой уже с выбранном классом? нет — пробуем сохранённый
+    // выбор (localStorage); и его нет — открываем лобби
+    const continueGame = async () => {
+        if (heroId !== null) return true;
+        const saved = localStorage.getItem("heroKey");
+        if (saved && HERO_CLASSES.some((c) => c.key === saved)) {
+            await spawnHero(saved);
+            return true;
+        }
+        scenes.go("lobby");
+        return false;
     };
     const quitGame = () => {
         window.close();
@@ -223,7 +241,10 @@
     };
     // Кнопки меню (в колонку слева) и панели настроек (внутри, не в раскладку)
     menuUi.addChild(
-        makeMenuButton("Продолжить", () => { menuOff(); scenes.go("game"); }),
+        makeMenuButton("Продолжить", async () => {
+            menuOff();
+            if (await continueGame()) scenes.go("game");
+        }),
         makeMenuButton("Новая игра", newGame),
         makeMenuButton("Настройки", openSettings),
         makeMenuButton("Выход", quitGame),
@@ -238,6 +259,126 @@
     menuUi.addChild(settingsPanel);
     placeMenu();
     app.renderer.on("resize", placeMenu);
+
+    // ===== Лобби выбора героя (сцена "lobby") ==================================
+    // Четыре карточки (HERO_CLASSES): портрет-кукла из образца, имя, статы,
+    // описание и иконки боевых умений. Клик — спавн героя и вход в игру;
+    // выбор запоминается (localStorage "heroKey"), «Продолжить» его подхватывает.
+    const lobbyUi = new PIXI.Container();
+    lobbyUi.visible = false;
+    app.stage.addChild(lobbyUi);
+    if (FILE_MODE && !globalThis.EMBED_LOBBY) {
+        throw new Error("file://: не подключён scripts/embedded_lobby.js");
+    }
+    const lobbyBg = new PIXI.Graphics();
+    lobbyUi.addChild(lobbyBg); // затемнение поверх мира, рисуется в placeLobby
+    const lobbyTitle = new PIXI.Text({
+        text: "ВЫБЕРИТЕ ГЕРОЯ",
+        style: { fontFamily: GAME_FONT, fontSize: 44, fill: "#ffd98e", fontWeight: "bold" },
+    });
+    lobbyTitle.anchor.set(0.5);
+    lobbyUi.addChild(lobbyTitle);
+    const abilityIconTex = {}; // кэш иконок карточек (те же файлы, что у панели)
+    const abilityIcon = async (icon) => {
+        if (!abilityIconTex[icon]) {
+            abilityIconTex[icon] = FILE_MODE
+                ? assets.textureFromDataURL(globalThis.EMBED_ABILITIES[icon])
+                : await assets.loadTexture(`./images/abilities/${icon}.png`);
+        }
+        return abilityIconTex[icon];
+    };
+    const CARD_W = 216, CARD_H = 444, CARD_GAP = 18;
+    const lobbyCards = [];
+    let heroLoading = false;
+    for (const cls of HERO_CLASSES) {
+        const card = new PIXI.Container();
+        const bg = new PIXI.Graphics();
+        const drawCardBg = (hot) => {
+            bg.clear()
+                .roundRect(0, 0, CARD_W, CARD_H, 12).fill({ color: 0x140f08, alpha: 0.94 })
+                .roundRect(0, 0, CARD_W, CARD_H, 12).stroke({ width: 3, color: hot ? 0xffd98e : 0x6b4a2f });
+        };
+        drawCardBg(false);
+        const doll = new PIXI.Sprite(FILE_MODE
+            ? assets.textureFromDataURL(EMBED_LOBBY.dolls[cls.doll])
+            : await assets.loadTexture(`./images/heroes/doll/${cls.doll}.png`));
+        doll.scale.set(0.56); // 192×288 → ~107×161
+        doll.position.set((CARD_W - doll.width) / 2, 10);
+        const name = new PIXI.Text({
+            text: cls.name,
+            style: { fontFamily: GAME_FONT, fontSize: 26, fill: "#f0e6c8", fontWeight: "bold" },
+        });
+        name.anchor.set(0.5, 0);
+        name.position.set(CARD_W / 2, 178);
+        // 5 основных статов (класс — ровно 20 очков, разброс из образца)
+        const stats = new PIXI.Text({
+            text: STAT_LABELS.map((lab, i) => `${lab.name}: ${Object.values(cls.prim)[i]}`).join("\n"),
+            style: { fontFamily: GAME_FONT, fontSize: 16, fill: "#cfc4a6", lineHeight: 21 },
+        });
+        stats.position.set(16, 212);
+        const desc = new PIXI.Text({
+            text: cls.desc,
+            style: {
+                fontFamily: GAME_FONT, fontSize: 14, fill: "#9aa4ad",
+                wordWrap: true, wordWrapWidth: CARD_W - 30, breakWords: true, lineHeight: 18,
+            },
+        });
+        desc.position.set(15, 324);
+        card.addChild(bg, doll, name, stats, desc);
+        // иконки боевых умений класса (3 слота) — под описанием
+        for (let i = 0; i < cls.loadout.length; i++) {
+            const def = HERO_ABILITIES[cls.key][i] || HERO_ABILITIES[cls.key].find((d) => d.key === cls.loadout[i]);
+            const icon = new PIXI.Sprite(await abilityIcon(def.icon));
+            icon.width = icon.height = 34;
+            icon.position.set(CARD_W / 2 - (cls.loadout.length * 42 - 8) / 2 + i * 42, CARD_H - 46);
+            card.addChild(icon);
+        }
+        bg.eventMode = "static";
+        bg.cursor = "pointer";
+        bg.on("pointerenter", () => drawCardBg(true));
+        bg.on("pointerleave", () => drawCardBg(false));
+        bg.on("pointertap", async () => {
+            if (heroLoading) return;
+            heroLoading = true;
+            lobbyHint.text = `Загрузка героя: ${cls.name}…`;
+            await spawnHero(cls.key);
+            localStorage.setItem("heroKey", cls.key);
+            heroLoading = false;
+            lobbyUi.visible = false;
+            scenes.go("game");
+        });
+        lobbyUi.addChild(card);
+        lobbyCards.push(card);
+    }
+    const lobbyHint = new PIXI.Text({
+        text: "Кого позовёшь в этот мир?",
+        style: { fontFamily: GAME_FONT, fontSize: 22, fill: "#cfc4a6" },
+    });
+    lobbyHint.anchor.set(0.5);
+    lobbyUi.addChild(lobbyHint);
+    const placeLobby = () => {
+        const w = app.screen.width, h = app.screen.height;
+        lobbyBg.clear().rect(0, 0, w, h).fill({ color: 0x0a0805, alpha: 0.9 });
+        lobbyTitle.position.set(w / 2, 26);
+        lobbyHint.position.set(w / 2, 92);
+        // колонки: широкому экрану — ряд из 4, узкому — сетка 2×2; масштаб
+        // подгоняем так, чтобы блок целиком влезал по ширине и высоте
+        const cols = w >= (4 * CARD_W + 3 * CARD_GAP + 40) ? 4 : 2;
+        const rowsN = Math.ceil(lobbyCards.length / cols);
+        const gridW = cols * CARD_W + (cols - 1) * CARD_GAP;
+        const gridH = rowsN * CARD_H + (rowsN - 1) * CARD_GAP;
+        const scale = Math.min(1, (w - 24) / gridW, (h - 150) / gridH);
+        lobbyCards.forEach((card, i) => {
+            const cx = i % cols, cy = (i / cols) | 0;
+            card.scale.set(scale);
+            card.position.set(
+                (w - gridW * scale) / 2 + cx * (CARD_W + CARD_GAP) * scale,
+                (h - gridH * scale) / 2 + 22 + cy * (CARD_H + CARD_GAP) * scale,
+            );
+        });
+    };
+    placeLobby();
+    app.renderer.on("resize", placeLobby);
 
     // ===== Текстуры тайлсетов =====
     setStage("загрузка тайлсетов…", 0.02);
@@ -385,18 +526,9 @@
         }
         return { x: (cx + 0.5) * TS, y: (cy + 0.5) * TS };
     }
-    setStage("спавн персонажа…", 0.74);
+    setStage("точка спавна героя…", 0.74);
     await frame();
-    const spawn = findSpawn();
-
-    // ===== Оборотень: лист 5×11 кадров 64×64 + манифест строк =====
-    setStage("загрузка персонажа…", 0.76);
-    await frame();
-    const wolf = FILE_MODE
-        ? await assets.loadCharacter("wolf_64", EMBED.wolf)
-        : await assets.loadCharacter(`${SPRITES_DIR}wolf_64`);
-    const wolfSprite = new PIXI.AnimatedSprite(wolf.animations.wait, false);
-    wolfSprite.anchor.set(0.5, 1); // позиция сущности = точка ног
+    const spawn = findSpawn(); // герой появится здесь после выбора класса
 
     // ===== Персонаж — ECS-сущность, контроллер — система (modules/character.js) ==
     // Спрайт ставит на место renderSystem ядра, кадры крутит animationSystem,
@@ -414,7 +546,12 @@
     // снаряд получает снимок боевых данных владельца (фракция, бросок урона) —
     // combat создаётся ниже, поэтому колбэки ссылается на него через let.
     let combat = null;
-    let quests = null; // квесты создаются после боя (колбэк onKill ниже)
+    let quests = null; // квесты создаются при спавне героя (колбэк onKill ниже)
+    // Герой появляется только после выбора класса (лобби/«Продолжить»):
+    // до этого сцены меню/лобби работают без сущности героя
+    let heroId = null;
+    let heroCls = null;   // класс из HERO_CLASSES (data/heroes.js)
+    let abilities = null; // панель способностей — при спавне героя
     const projectiles = createProjectiles({
         world, ECS, COMPONENTS, DATA, addSystem, assets, rows, TS,
         getFaction: (id) => (combat ? combat.factionOf(id) : -1),
@@ -452,19 +589,8 @@
             if (sp && sp.call) ai.alert(COMPONENTS.positionX[victimId], COMPONENTS.positionY[victimId], sp.call * TS);
         },
     });
-    const wolfId = characters.spawn({
-        x: spawn.x, y: spawn.y, sprite: wolfSprite, anims: wolf.animations,
-        speed: 150, fps: wolf.fps,
-        halfW: 3.5, halfH: 2.5, // «ноги» — вдвое уже тайла (спрайт 64px)
-    });
-    ECS.addComponent(world, wolfId, "cullPad", wolf.size); // герой выше «ног» на весь кадр (64px)
-    projectiles.bind(wolfId, "wolf");
-    // Ролевые статы героя (формулы — data/stats.js, образец countDopStats.js)
-    combat.init(wolfId, {
-        faction: 0, hero: true, size: wolf.size,
-        lvl: HERO_BASE.lvl, prim: HERO_BASE.prim, growth: HERO_BASE.growth,
-        weaponMin: HERO_BASE.weaponMin,
-    });
+    // Герой появится здесь после выбора класса в лобби (spawnHero ниже) —
+    // волк героем больше не является, он монстр открытого мира.
     // HUD героя (правый верхний угол, поверх мира): спрайт-полосы ХП (bigBar +
     // красная hpBarLine) и опыта (smallBar + золотая loadBarLine). Привязка к
     // ПРАВОМУ КРАЮ: позиции пересчитываются при resize — на весь экран полоски
@@ -485,41 +611,70 @@
     app.renderer.on("resize", placeHeroHud);
     hud.container.addChild(heroHpBar.root, heroXpBar.root);
 
-    // ===== Квесты: цепочка заданий (data/quests.js + modules/quests.js) ========
-    // Убийства героем приходят событиями от combat (onKill выше), уровень героя
-    // модуль опрашивает сам, награды выдаёт через combat.giveXp. Интерфейс:
-    // трекер под полосками ХП/опыта, журнал (L), объявления сверху экрана;
-    // в сцене меню прячется. Тик — только в игровой сцене (ниже).
-    quests = createQuests({
-        app, combat, fx, heroId: wolfId,
-        heroPos: () => ({ x: COMPONENTS.positionX[wolfId], y: COMPONENTS.positionY[wolfId] }),
-    });
-    app.renderer.on("resize", quests.place);
-
-    // ===== Способности героя: панель слотов 1–3 (modules/abilities.js) ========
-    // Боевой набор — WOLF_ABILITIES (data/abilities.js): Огненный шар,
-    // Пронзающий рывок, Мороз — адаптации умений образца. Панель внизу по
-    // центру; кулдауны тикают только в игровой сцене (ниже), в меню панель
-    // прячется. Иконки: по http — живые файлы, на file:// — вшитые data-URL.
-    const abilities = createAbilities({
-        app, combat, characters, projectiles, fx, assets,
-        heroId: wolfId, blocked, COMPONENTS, DATA,
-    });
-    await abilities.load({ fileMode: FILE_MODE, embed: globalThis.EMBED_ABILITIES || null });
-    app.renderer.on("resize", abilities.place);
     // Герой ходит по «рядам ног» объектов: между рядами порядок задают
     // контейнеры, внутри ряда героя каждый кадр пересортировывает его zIndex
     // (ставит система персонажей). Ряды героя — единственное, что тасуется.
-    let wolfRow = -1;
-    function wolfRowFollow() {
-        const r = Math.max(0, Math.min(H, Math.floor(COMPONENTS.positionY[wolfId] / TS)));
-        if (r === wolfRow) return;
-        if (wolfRow >= 0) wolfSprite.removeFromParent();
-        rows[r].addChild(wolfSprite);
-        wolfRow = r;
+    let heroSprite = null;
+    let heroRow = -1;
+    function heroRowFollow() {
+        if (heroId === null || !heroSprite) return;
+        const r = Math.max(0, Math.min(H, Math.floor(COMPONENTS.positionY[heroId] / TS)));
+        if (r === heroRow) return;
+        if (heroRow >= 0) heroSprite.removeFromParent();
+        rows[r].addChild(heroSprite);
+        heroRow = r;
     }
-    wolfRowFollow(); // сразу в правильный ряд — к первому кадру
-    addSystem(wolfRowFollow);
+    addSystem(heroRowFollow);
+
+    // ── СПАВН ГЕРОЯ выбранного класса (лобби/«Продолжить») ──────────────────
+    // Лист класса, ECS-сущность, привязка атаки, ролевые статы класса
+    // (HERO_CLASSES), квесты и панель способностей — создаются один раз.
+    let heroReach = 36; // «зона достижимости оружия» — по атаке класса
+    async function spawnHero(classKey) {
+        if (heroId !== null) return heroId;
+        const cls = HERO_CLASSES.find((c) => c.key === classKey) || HERO_CLASSES[0];
+        const ch = FILE_MODE
+            ? await assets.loadCharacter(cls.sheet, EMBED.chars[cls.sheet])
+            : await assets.loadCharacter(`${SPRITES_DIR}${cls.sheet}`);
+        const sprite = new PIXI.AnimatedSprite(ch.animations.wait, false);
+        sprite.anchor.set(0.5, 1); // позиция сущности = точка ног
+        const id = characters.spawn({
+            x: spawn.x, y: spawn.y, sprite, anims: ch.animations,
+            speed: 150, fps: ch.fps,
+            halfW: 3.5, halfH: 2.5, // «ноги» — вдвое уже тайла (спрайт 64px)
+        });
+        ECS.addComponent(world, id, "cullPad", ch.size);
+        projectiles.bind(id, cls.key);
+        // Ролевые статы класса (формулы — data/stats.js)
+        combat.init(id, {
+            faction: 0, hero: true, size: ch.size, lvl: 1,
+            prim: { ...cls.prim }, growth: { ...cls.growth },
+            weaponMin: cls.weaponMin,
+        });
+        heroId = id;
+        heroCls = cls;
+        heroSprite = sprite;
+        heroReach = ATTACK_CONFIGS[CHARACTER_ATTACKS[cls.key].attack].reach;
+        heroRowFollow(); // сразу в правильный ряд
+        // Квесты и способности — один раз на сессию (герой спавнится один раз)
+        if (!quests) {
+            quests = createQuests({
+                app, combat, fx, heroId,
+                heroPos: () => ({ x: COMPONENTS.positionX[heroId], y: COMPONENTS.positionY[heroId] }),
+            });
+            app.renderer.on("resize", quests.place);
+        }
+        if (!abilities) {
+            abilities = createAbilities({
+                app, combat, characters, projectiles, fx, assets,
+                heroId, blocked, COMPONENTS, DATA,
+                loadout: HERO_ABILITIES[cls.key],
+            });
+            await abilities.load({ fileMode: FILE_MODE, embed: globalThis.EMBED_ABILITIES || null });
+            app.renderer.on("resize", abilities.place);
+        }
+        return id;
+    }
 
     // ===== Ряды ног живых существ: герой ходит между контейнерами рядов; =====
     // тот же механизм переиспользуют враги (переселение раз в кадр)
@@ -551,6 +706,7 @@
         ogr:     { speed: 95,  detect: 180, leash: 340, patrol: 100, elite: true },
         spider:  { speed: 135, detect: 120, leash: 240, patrol: 90 },
         rat:     { speed: 140, detect: 110, leash: 220, patrol: 80 },
+        wolf:    { speed: 135, detect: 165, leash: 330, patrol: 120 }, // лесной охотник
         octopus: { speed: 100, detect: 110, leash: 200, patrol: 80, swim: true },
     };
     // «Зона достижимости оружия» (reach из ATTACK_CONFIGS) — дистанция атаки ИИ.
@@ -566,7 +722,10 @@
         world, ECS, COMPONENTS, DATA, addSystem, characters,
         blocked,
         blockedAlt: blockedSwim, // пловец: вода проходима, всё остальное — нет
-        getPlayerPos: () => ({ x: COMPONENTS.positionX[wolfId], y: COMPONENTS.positionY[wolfId] }),
+        // героя до выбора класса нет — «он» бесконечно далеко, никто не агрится
+        getPlayerPos: () => (heroId !== null
+            ? { x: COMPONENTS.positionX[heroId], y: COMPONENTS.positionY[heroId] }
+            : { x: -1e9, y: -1e9 }),
     });
     const enemies = []; // { name, id, size } — хендл для __TEST
     // Свободная точка ног возле (x, y): спот может попасть в воду/объект
@@ -610,15 +769,16 @@
         });
         enemies.push({ name: kind, id, size: ch.size });
     }
-    // Листы врагов — один вид грузится один раз (кэш менеджера ассетов)
+    // Листы врагов — один вид грузится один раз (кэш менеджера ассетов);
+    // волк на file:// берётся из EMBED.wolf (в chars его нет — лист героя)
     const enemyKinds = {};
-    const ENEMY_SHEETS = ["goba", "shaman", "dwarf", "orc", "ogr", "spider", "rat", "octopus"];
+    const ENEMY_SHEETS = ["goba", "shaman", "dwarf", "orc", "ogr", "spider", "rat", "wolf", "octopus"];
     for (let i = 0; i < ENEMY_SHEETS.length; i++) {
         const kind = ENEMY_SHEETS[i];
-        setStage(`расселение врагов… (${kind})`, 0.80 + (i / ENEMY_SHEETS.length) * 0.15);
+        setStage(`расселение врагов… (${kind})`, 0.76 + (i / ENEMY_SHEETS.length) * 0.14);
         if (i % 4 === 0) await frame();
         enemyKinds[kind] = FILE_MODE
-            ? await assets.loadCharacter(`${kind}_64`, EMBED.chars[`${kind}_64`])
+            ? await assets.loadCharacter(`${kind}_64`, EMBED.chars[`${kind}_64`] || EMBED.wolf)
             : await assets.loadCharacter(`${SPRITES_DIR}${kind}_64`);
     }
     // ── Маска леса: клетки footprint'ов деревьев + кромка под кронами
@@ -687,10 +847,12 @@
             spawnEnemy(race, spot.x, spot.y);
         }
     });
-    // ── Лесные и водные
+    // ── Лесные и водные: в лесах пауки, крысы и ВОЛКИ (бывший герой — теперь
+    // дикий хищник), в глубокой воде октопусы
     for (let i = 0; i < 40 && forestSpots.length; i++) {
         const [x, y] = forestSpots[i];
-        spawnEnemy(i % 2 ? "spider" : "rat", x, y);
+        const roll = Math.random();
+        spawnEnemy(roll < 0.16 ? "wolf" : roll < 0.58 ? "spider" : "rat", x, y);
     }
     for (let i = 0; i < 14 && waterSpots.length; i++) {
         const [x, y] = waterSpots[i];
@@ -705,12 +867,13 @@
     app.canvas.addEventListener("mousedown", (e) => {
         if (e.button === 1) { e.preventDefault(); camera.setZoom(INITIAL_ZOOM); }
     });
-    // Камера следит за КОМПОНЕНТАМИ сущности (живой взгляд на positionX/Y)
-    const wolfPos = {
-        get x() { return COMPONENTS.positionX[wolfId]; },
-        get y() { return COMPONENTS.positionY[wolfId]; },
+    // Камера следит за КОМПОНЕНТАМИ сущности (живой взгляд на positionX/Y);
+    // до спавна героя — точка спавна
+    const heroPos = {
+        get x() { return heroId !== null ? COMPONENTS.positionX[heroId] : spawn.x; },
+        get y() { return heroId !== null ? COMPONENTS.positionY[heroId] : spawn.y; },
     };
-    camera.follow(wolfPos, 8);
+    camera.follow(heroPos, 8);
     camera.setBounds({ x: 0, y: 0, width: W * TS, height: H * TS });
     camera.setZoom(INITIAL_ZOOM);
     camera.centerOn(spawn.x, spawn.y);
@@ -737,22 +900,23 @@
     const scenes = createScenes({ addSystem });
     // Автоатака героя: враг в «зоне достижимости оружия» (reach атаки героя)
     // бьётся сам, без клавиши; кулдаун между взмахами
-    const heroReach = ATTACK_CONFIGS[CHARACTER_ATTACKS.wolf.attack].reach;
+    // heroReach объявлен в spawnHero (по атаке выбранного класса)
     let heroAtkCd = 0;
     scenes.add("game", {
         enter() {
             hud.removeText("pauseLabel");
             hintLabel.visible = true;
-            quests.show(true);
-            abilities.show(true);
+            if (quests) quests.show(true);
+            if (abilities) abilities.show(true);
             debug.info["Сцена"] = "game";
         },
         update(ticker) {
+            if (heroId === null) { input.endFrame(); return; } // герой ещё не выбран
             characters.update(ticker); // ввод → коллизии/скольжение → анимация (по компонентам)
             const dt = (ticker && ticker.deltaMS || 1000 / 60) / 1000;
             heroAtkCd -= dt;
-            if (heroAtkCd <= 0 && !COMPONENTS.ctrlLock[wolfId]) {
-                const px = COMPONENTS.positionX[wolfId], py = COMPONENTS.positionY[wolfId];
+            if (heroAtkCd <= 0 && !COMPONENTS.ctrlLock[heroId]) {
+                const px = COMPONENTS.positionX[heroId], py = COMPONENTS.positionY[heroId];
                 const r2 = heroReach * heroReach;
                 for (let i = 0; i < enemies.length; i++) {
                     const en = enemies[i];
@@ -762,9 +926,9 @@
                     if (dx * dx + dy * dy <= r2) {
                         // снаряд выпустит модуль projectiles; прицел — в цель,
                         // чтобы выстрел летел точно во врага с любой диагонали
-                        characters.playAttack(wolfId, { x: COMPONENTS.positionX[en.id], y: COMPONENTS.positionY[en.id] });
+                        characters.playAttack(heroId, { x: COMPONENTS.positionX[en.id], y: COMPONENTS.positionY[en.id] });
                         // Рефлексы (Скорость/2) сокращают кулдаун основной атаки
-                        heroAtkCd = 0.9 * (1 - combat.dopOf(wolfId).cdrAttack / 100);
+                        heroAtkCd = 0.9 * (1 - combat.dopOf(heroId).cdrAttack / 100);
                         break;
                     }
                 }
@@ -788,16 +952,17 @@
             // Оверлей отладки: параметры мира и живое состояние сущности из компонентов
             debug.info["Сид"] = SEED;
             debug.info["Карта"] = `${W}×${H}, объектов ${gen.placements.length}, POI ${gen.pois.length}`;
-            debug.info["Позиция"] = `${COMPONENTS.positionX[wolfId] | 0}, ${COMPONENTS.positionY[wolfId] | 0}`;
-            debug.info["Анимация"] = DATA.ctrlAnim[wolfId];
-            debug.info["Взгляд"] = characters.facingName(wolfId);
+            debug.info["Герой"] = heroCls.name;
+            debug.info["Позиция"] = `${COMPONENTS.positionX[heroId] | 0}, ${COMPONENTS.positionY[heroId] | 0}`;
+            debug.info["Анимация"] = DATA.ctrlAnim[heroId];
+            debug.info["Взгляд"] = characters.facingName(heroId);
             debug.info["Тайлов на экране"] = tiles.stats().tiles;
             debug.info["Сущностей ECS"] = world.entities.length;
             // Полоски героя + боевые статы в оверлее отладки
-            const hs = combat.stat(wolfId);
-            heroHpBar.set(combat.hpRatio(wolfId));
-            heroXpBar.set(combat.xpRatio(wolfId));
-            debug.info["ХП"] = `${Math.ceil(COMPONENTS.hp[wolfId])}/${COMPONENTS.maxHp[wolfId]} · опыт ${hs.xp}/${xpToNext(hs.lvl)}`;
+            const hs = combat.stat(heroId);
+            heroHpBar.set(combat.hpRatio(heroId));
+            heroXpBar.set(combat.xpRatio(heroId));
+            debug.info["ХП"] = `${Math.ceil(COMPONENTS.hp[heroId])}/${COMPONENTS.maxHp[heroId]} · опыт ${hs.xp}/${xpToNext(hs.lvl)}`;
             input.endFrame(); // сброс однокадровых флагов В КОНЦЕ кадра
         },
     });
@@ -811,7 +976,21 @@
         },
         update() {
             if (input.wasPressed("KeyP")) scenes.go("game");
-            if (input.wasPressed("KeyL")) quests.toggleLog(); // журнал читаем и в паузе
+            if (input.wasPressed("KeyL") && quests) quests.toggleLog(); // журнал читаем и в паузе
+            input.endFrame();
+        },
+    });
+    scenes.add("lobby", {
+        enter() {
+            placeLobby(); // раскладка могла измениться со старта
+            lobbyUi.visible = true;
+            hintLabel.visible = false;
+            debug.info["Сцена"] = "lobby";
+        },
+        exit() {
+            lobbyUi.visible = false;
+        },
+        update() {
             input.endFrame();
         },
     });
@@ -820,38 +999,46 @@
             placeMenu(); // пересчёт раскладки: размер панели мог измениться со старта
             menuUi.visible = true;
             hintLabel.visible = false;
-            quests.show(false); // интерфейс квестов в меню не нужен
-            abilities.show(false); // панель умений тоже
+            if (quests) quests.show(false);   // интерфейс квестов в меню не нужен
+            if (abilities) abilities.show(false); // панель умений тоже
             debug.info["Сцена"] = "menu";
         },
         exit() {
             menuUi.visible = false;
-            hintLabel.visible = true;
-            quests.show(true);
-            abilities.show(true);
+            if (heroId !== null) hintLabel.visible = true;
+            if (quests) quests.show(true);
+            if (abilities) abilities.show(true);
         },
         update() {
             if (settingsOpen && input.wasPressed("Escape")) closeSettings();
             input.endFrame();
         },
     });
-    scenes.go("menu"); // мир загружен — ждём выбора игрока
+    // Мир загружен: «Новая игра» ведёт в лобби выбора героя, иначе — меню
+    // (флаг ставит кнопка «Новая игра» перед перезагрузкой с новым сидом)
+    const pickHeroFlag = sessionStorage.getItem("pickHero");
+    if (pickHeroFlag) sessionStorage.removeItem("pickHero");
+    scenes.go(pickHeroFlag ? "lobby" : "menu");
     loader.root.destroy({ children: true }); // экран загрузки больше не нужен
 
     console.log(`[game] мир ${W}×${H} сид ${SEED}: объектов ${gen.placements.length}, POI ${gen.pois.length}; ` +
-        `персонаж (сущность ${wolfId}) в (${spawn.x | 0}, ${spawn.y | 0}) + врагов ${enemies.length}; рендерер ${app.renderer.name}`);
+        `врагов ${enemies.length}; герой появится после выбора класса (лобби); рендерер ${app.renderer.name}`);
 
     // ===== Хендл для автотестов из консоли браузера =====
     window.__TEST = {
-        wolfId, characters, camera, input, scenes, blocked, tiles, tilesHolder, bake: cornerTex,
+        get heroId() { return heroId; },
+        get heroCls() { return heroCls; },
+        spawnHero,
+        characters, camera, input, scenes, blocked, tiles, tilesHolder, bake: cornerTex,
         components: COMPONENTS, data: DATA, enemies, ai, projectiles, combat, quests,
-        abilities, abilitiesState: () => abilities.snapshot(),
-        questState: () => quests.snapshot(),
-        heroStat: () => combat.stat(wolfId),
-        heroDop: () => combat.dopOf(wolfId),
-        giveXp: (n) => combat.giveXp(wolfId, n),
+        get abilities() { return abilities; },
+        abilitiesState: () => (abilities ? abilities.snapshot() : null),
+        questState: () => (quests ? quests.snapshot() : null),
+        heroStat: () => combat.stat(heroId),
+        heroDop: () => combat.dopOf(heroId),
+        giveXp: (n) => combat.giveXp(heroId, n),
         world: () => ({ w: W, h: H, seed: SEED, objects: gen.placements.length, pois: gen.pois.length }),
-        info: (id = wolfId) => ({
+        info: (id = heroId) => ({
             x: COMPONENTS.positionX[id], y: COMPONENTS.positionY[id],
             anim: DATA.ctrlAnim[id], facing: characters.facingName(id),
             moving: !!COMPONENTS.ctrlMove[id],

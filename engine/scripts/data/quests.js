@@ -23,6 +23,7 @@ const KIND_RU = {
     ogr:     { gen: "огров" },
     spider:  { gen: "пауков" },
     rat:     { gen: "крыс" },
+    wolf:    { gen: "волков" },
     octopus: { gen: "октопусов" },
 };
 

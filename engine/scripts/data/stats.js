@@ -60,14 +60,6 @@ function calcDop(prim) {
     };
 }
 
-// Герой (волк): базовые основные статы и прирост за уровень
-const HERO_BASE = {
-    lvl: 1,
-    prim: { str: 8, agi: 8, vit: 8, spd: 8, wis: 5 },
-    growth: { str: 2, agi: 2, vit: 2, spd: 2, wis: 2 },
-    weaponMin: 3, // минимальный урон основного удара (укуса)
-};
-
 // Враги: уровень, основные статы, минимальный урон и награда опытом.
 // game.js при спавне добавляет индивидуальную разброску +0..1 к каждому стату.
 // special — особые способности из образца (полный бестиарий с описаниями —
@@ -82,6 +74,7 @@ const ENEMY_STATS = {
     ogr:     { lvl: 5, prim: { str: 9, agi: 2, vit: 9, spd: 2, wis: 2 }, weaponMin: 3, xp: 35 },
     spider:  { lvl: 2, prim: { str: 4, agi: 4, vit: 3, spd: 4, wis: 1 }, weaponMin: 1, xp: 10, special: { poison: 2 } },
     rat:     { lvl: 1, prim: { str: 2, agi: 4, vit: 2, spd: 5, wis: 1 }, weaponMin: 1, xp: 5 },
+    wolf:    { lvl: 3, prim: { str: 6, agi: 6, vit: 5, spd: 6, wis: 2 }, weaponMin: 2, xp: 20 },
     octopus: { lvl: 2, prim: { str: 4, agi: 3, vit: 4, spd: 3, wis: 2 }, weaponMin: 1, xp: 10 },
 };
 
@@ -92,5 +85,4 @@ globalThis.countLog = countLog;
 globalThis.xpToNext = xpToNext;
 globalThis.STAT_LABELS = STAT_LABELS;
 globalThis.calcDop = calcDop;
-globalThis.HERO_BASE = HERO_BASE;
 globalThis.ENEMY_STATS = ENEMY_STATS;

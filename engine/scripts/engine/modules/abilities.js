@@ -1,23 +1,23 @@
 // СПОСОБНОСТИ ГЕРОЯ — панель слотов с кулдаунами (клавиши 1..N).
-// Данные набора — WOLF_ABILITIES (data/abilities.js, адаптации умений
+// Набор — HERO_ABILITIES[classKey] (data/abilities.js, адаптации умений
 // образца forWork/example); механика каста — здесь (RUN по ключу).
 // Панель живёт в app.stage (экранные координаты), внизу по центру;
 // place() пересчитывает на resize, show() прячет в меню (как квесты).
 //
 // ТИК ТОЛЬКО В ИГРОВОЙ СЦЕНЕ: update(ticker) зовётся из scene update
-// (НЕ addSystem) — кулдауны замораживаются на паузе и в меню, как таймеры
-// scheduler и квесты.
+// (НЕ addSystem) — кулдауны и отложенные эффекты (метеорит) замораживаются
+// на паузе и в меню.
 //
 // Механики опираются на боевые данные combat (уровень/статы/цели),
 // characters (позиция героя), projectiles.spawn (снаряд с СНИМКОМ урона
-// владельца — как у автоатаки) и combat.applySlow (замедление).
+// владельца) и combat.applySlow (замедление/ускорение).
 //
 // Битовый бюджет: НОЛЬ новых компонентов — кулдауны в массиве слотов фабрики.
 //
 // Пример:
 //   const abilities = createAbilities({ app, combat, characters, projectiles,
-//                                       fx, assets, heroId: wolfId, blocked,
-//                                       COMPONENTS, DATA });
+//                                       fx, assets, heroId, blocked,
+//                                       COMPONENTS, DATA, loadout });
 //   await abilities.load({ fileMode, embed: EMBED_ABILITIES });
 //   // в scene update game: abilities.update(ticker); клавиши 1..N — abilities.use(i)
 
@@ -27,16 +27,18 @@ const ABILITY_BOTTOM = 16; // отступ панели от низа экран
 const ABILITY_DIRS = { front: [0, 1], back: [0, -1], left: [-1, 0], right: [1, 0] };
 
 function createAbilities({ app, combat, characters, projectiles, fx, assets,
-                           heroId, blocked, COMPONENTS, DATA }) {
+                           heroId, blocked, COMPONENTS, DATA, loadout }) {
     if (!combat || !characters || !projectiles || !fx || !assets) {
         throw new Error("createAbilities: нужны combat, characters, projectiles, fx, assets");
     }
-    const defs = globalThis.WOLF_ABILITIES;
-    if (!defs || !defs.length) throw new Error("createAbilities: нет WOLF_ABILITIES");
+    const defs = loadout;
+    if (!defs || !defs.length) throw new Error("createAbilities: не передан loadout");
 
     // ── СОСТОЯНИЕ СЛОТОВ (кулдауны вне битовой маски — обычные объекты) ────
     const slots = defs.map((def) => ({ def, cd: 0, iconTex: null, root: null,
                                       overlay: null, label: null, secs: null }));
+    // Отложенные эффекты (метеорит): { t, x, y, base, critPower, radius }
+    const pendings = [];
 
     // ── ПАНЕЛЬ (app.stage: экран bottom-center) ─────────────────────────────
     const container = new PIXI.Container();
@@ -152,8 +154,9 @@ function createAbilities({ app, combat, characters, projectiles, fx, assets,
             return true;
         },
 
-        // ПРОНЗАЮЩИЙ РЫВОК: шагами по взгляду до params.dist; задетые враги
-        // получают 2 + подвижность/2 (melee:false — контратака в рывке неуместна)
+        // ПРОНЗАЮЩИЙ РЫВОК / ЗАРЯЖЕННАЯ АТАКА: шагами по взгляду до params.dist;
+        // задетые получают 2 + подвижность/2 (dash) или 4 + сила (charge);
+        // melee:false — контратака в рывке неуместна
         dash(p) {
             const from = heroPos();
             const s = combat.stat(heroId);
@@ -163,7 +166,8 @@ function createAbilities({ app, combat, characters, projectiles, fx, assets,
             let x = from.x, y = from.y, travelled = 0;
             const hit = new Set();
             const r2 = p.hitR * p.hitR;
-            const base = p.damage + Math.round(s.dop.move * p.moveScale);
+            const base = p.damage + Math.round(s.dop.move * (p.moveScale || 0))
+                       + Math.round(s.prim.str * (p.strScale || 0));
             while (travelled < p.dist) {
                 const nx = x + v[0] * step, ny = y + v[1] * step;
                 if (blocked(nx, ny)) break; // стена — рывок гаснет
@@ -203,15 +207,188 @@ function createAbilities({ app, combat, characters, projectiles, fx, assets,
             fx.burst(from.x, from.y - 12, { count: 16, color: 0x9fd8ff, speedMax: 140, life: 0.6 });
             return true; // АоЕ вокруг себя — кастуется всегда
         },
+
+        // ЗАРЯЖЕННАЯ АТАКА рыцаря: тот же рывок, урон от Силы (strScale)
+        charge(p) {
+            return RUN.dash(p);
+        },
+
+        // ВЕЕРНЫЙ БРОСОК плута: count ножей веером по взгляду (±spread радиан),
+        // урон каждого = damage + ловкость×agiScale; строка анимации — ближайшая
+        // из 8 направлений листа knife к вектору полёта
+        fan(p) {
+            const from = heroPos();
+            const s = combat.stat(heroId);
+            const anim = DATA.ctrlAnim[heroId] || "walk_front";
+            const base = ABILITY_DIRS[anim.slice("walk_".length)] || ABILITY_DIRS.front;
+            const a0 = Math.atan2(base[1], base[0]);
+            const dmg = p.damage + Math.round(s.prim.agi * p.agiScale);
+            for (let i = 0; i < p.count; i++) {
+                const a = a0 + (i - (p.count - 1) / 2) * p.spread;
+                const vx = Math.cos(a) * p.speed, vy = Math.sin(a) * p.speed;
+                projectiles.spawn({
+                    type: "knife", dir: angleDir(a),
+                    x: from.x, y: from.y - 16,
+                    vx, vy, lifetime: 1.1,
+                    owner: heroId, faction: 0,
+                    attack: { base: dmg, critPower: s.dop.critPower },
+                });
+            }
+            fx.burst(from.x, from.y - 16, { count: 6, color: 0xcfd8e8, speedMax: 70, life: 0.35 });
+            return true;
+        },
+
+        // КРЮК-КОШКА плута: притягивает ближайшего врага (шагами, без стен)
+        // и наносит 2 + мудрость×wisScale — урон НЕ зависит от того,
+        // удалось ли дотащить (так в образце: «Притягивает. Наносит урон.»)
+        pull(p) {
+            const from = heroPos();
+            const s = combat.stat(heroId);
+            let best = null, bd = p.range * p.range;
+            for (const t of combat.targetsOf(0)) {
+                const dx = COMPONENTS.positionX[t] - from.x;
+                const dy = COMPONENTS.positionY[t] - from.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < bd) { bd = d2; best = t; }
+            }
+            if (!best) {
+                fx.text(from.x, from.y - 46, "Нет цели",
+                    { color: "#9aa4ad", size: 20, life: 0.7, rise: 20 });
+                return false;
+            }
+            const step = 8;
+            while (true) {
+                const dx = from.x - COMPONENTS.positionX[best];
+                const dy = from.y - COMPONENTS.positionY[best];
+                const d = Math.hypot(dx, dy);
+                if (d <= p.stopDist) break;
+                const nx = COMPONENTS.positionX[best] + dx / d * step;
+                const ny = COMPONENTS.positionY[best] + dy / d * step;
+                if (blocked(nx, ny)) break; // упёрся в препятствие — тяга кончилась
+                COMPONENTS.positionX[best] = nx;
+                COMPONENTS.positionY[best] = ny;
+            }
+            combat.dealDamage(heroId, best,
+                { base: p.damage + Math.round(s.dop.spellPower * p.wisScale) });
+            fx.burst(COMPONENTS.positionX[best], COMPONENTS.positionY[best] - 16,
+                { count: 8, color: 0xbfa96f, speedMax: 90, life: 0.45 });
+            return true;
+        },
+
+        // УСКОРЕНИЕ (Теневое скольжение / Разгон): combat.applySlow с mul > 1 —
+        // тот же таймер, что у замедления, восстанавливает скорость сам
+        haste(p) {
+            combat.applySlow(heroId, 1 + p.bonus / 100, p.dur);
+            fx.burst(heroPos().x, heroPos().y - 14,
+                { count: 10, color: 0xffe9a8, speedMax: 80, life: 0.5 });
+            return true;
+        },
+
+        // ЛЕЧЕНИЕ (Восстановление / Аура восстановления): amount + вит×vitScale,
+        // выносливость усиливает внутри combat.heal; при полных ХП каст не тратится
+        heal(p) {
+            const s = combat.stat(heroId);
+            const max = COMPONENTS.maxHp[heroId];
+            if (COMPONENTS.hp[heroId] >= max) {
+                fx.text(heroPos().x, heroPos().y - 46, "Здоров",
+                    { color: "#9aa4ad", size: 20, life: 0.7, rise: 20 });
+                return false;
+            }
+            combat.heal(heroId, p.amount + Math.round(s.prim.vit * p.vitScale));
+            fx.burst(heroPos().x, heroPos().y - 20,
+                { count: 10, color: 0x7fe07f, speedMax: 60, life: 0.6 });
+            return true;
+        },
+
+        // КАЗНЬ рыцаря: добивает ближайшего врага с ХП ≤ threshold; убийство
+        // идёт через dealDamage — засчитывается квестам и даёт опыт
+        execute(p) {
+            const from = heroPos();
+            let best = null, bd = p.range * p.range;
+            for (const t of combat.targetsOf(0)) {
+                const dx = COMPONENTS.positionX[t] - from.x;
+                const dy = COMPONENTS.positionY[t] - from.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < bd && COMPONENTS.hp[t] / COMPONENTS.maxHp[t] <= p.threshold) {
+                    bd = d2; best = t;
+                }
+            }
+            if (!best) {
+                fx.text(from.x, from.y - 46, "Нет жертвы",
+                    { color: "#9aa4ad", size: 20, life: 0.7, rise: 20 });
+                return false;
+            }
+            combat.dealDamage(heroId, best, { base: 99999 });
+            fx.burst(COMPONENTS.positionX[best], COMPONENTS.positionY[best] - 16,
+                { count: 14, color: 0xff5c4d, speedMax: 130, life: 0.6 });
+            return true;
+        },
+
+        // МЕТЕОРИТ волшебницы: падает через delay сек в точку ближайшего врага
+        // (≤range), урон по площади; отложенный тик — в update() (заморожен на паузе)
+        meteor(p) {
+            const from = heroPos();
+            const s = combat.stat(heroId);
+            let best = null, bd = p.range * p.range;
+            for (const t of combat.targetsOf(0)) {
+                const dx = COMPONENTS.positionX[t] - from.x;
+                const dy = COMPONENTS.positionY[t] - from.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < bd) { bd = d2; best = t; }
+            }
+            if (!best) {
+                fx.text(from.x, from.y - 46, "Нет цели",
+                    { color: "#9aa4ad", size: 20, life: 0.7, rise: 20 });
+                return false;
+            }
+            pendings.push({
+                t: p.delay,
+                x: COMPONENTS.positionX[best],
+                y: COMPONENTS.positionY[best],
+                base: p.damage + p.spellPerWis * s.dop.spellPower,
+                critPower: s.dop.critPower,
+                radius: p.radius,
+            });
+            fx.burst(COMPONENTS.positionX[best], COMPONENTS.positionY[best] - 6,
+                { count: 6, color: 0xff8833, speedMax: 40, life: p.delay });
+            return true;
+        },
     };
 
-    // ── КАДР: тик кулдаунов + перерисовка шторок (только игровая сцена) ─────
+    // Ближайшая из 8 строк анимации knife к углу полёта (для веера ножей).
+    // Экранная ось Y направлена ВНИЗ: угол 0 — right, π/2 — front (вниз),
+    // π — left, 3π/2 — back (вверх)
+    const ANGLE_DIRS = ["right", "downright", "front", "downleft",
+        "left", "topleft", "back", "topright"];
+    function angleDir(a) {
+        const k = Math.round(((a + Math.PI * 2) % (Math.PI * 2)) / (Math.PI / 4)) % 8;
+        return ANGLE_DIRS[k];
+    }
+
+    // ── КАДР: тик кулдаунов/отложенных эффектов + перерисовка шторок ───────
     function update(ticker) {
         const dt = Math.min((ticker && ticker.deltaMS) || 1000 / 60, 50) / 1000;
         for (const slot of slots) {
             if (slot.cd <= 0) continue;
             slot.cd = Math.max(0, slot.cd - dt);
             drawCooldown(slot);
+        }
+        // Метеориты: падение в назначенную точку — урон по площади
+        for (let i = pendings.length - 1; i >= 0; i--) {
+            const m = pendings[i];
+            m.t -= dt;
+            if (m.t > 0) continue;
+            pendings.splice(i, 1);
+            const r2 = m.radius * m.radius;
+            for (const t of combat.targetsOf(0)) {
+                const dx = COMPONENTS.positionX[t] - m.x;
+                const dy = COMPONENTS.positionY[t] - m.y;
+                if (dx * dx + dy * dy <= r2) {
+                    combat.dealDamage(heroId, t, { base: m.base, critPower: m.critPower });
+                }
+            }
+            fx.burst(m.x, m.y - 10, { count: 24, color: 0xff8833, speedMax: 180,
+                life: 0.7, gravity: 300 });
         }
     }
     function drawCooldown(slot) {
