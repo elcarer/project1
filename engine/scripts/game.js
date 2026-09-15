@@ -332,24 +332,25 @@
         lvl: HERO_BASE.lvl, prim: HERO_BASE.prim, growth: HERO_BASE.growth,
         weaponMin: HERO_BASE.weaponMin,
     });
-    // HUD героя (правый верхний угол, поверх мира): строка уровня + спрайт-полосы
-    // ХП (bigBar + красная hpBarLine) и опыта (smallBar + золотая loadBarLine).
-    // Обе полосы и строка стоят на ОБЩЕЙ оси симметрии (центр X = W−126):
-    // ХП шириной 220, опыт 176 (на 20% короче) центрируются относительно неё.
-    // Фабрика makeSpriteBar — в экране загрузки выше.
-    const hudCenterX = app.screen.width - 126;
-    const heroLvlLabel = hud.text("heroLvl", "", {
-        x: hudCenterX, y: 6, size: 28, color: "#ffffff",
-    });
-    heroLvlLabel.anchor.set(0.5, 0); // центр строки на оси симметрии
+    // HUD героя (правый верхний угол, поверх мира): спрайт-полосы ХП (bigBar +
+    // красная hpBarLine) и опыта (smallBar + золотая loadBarLine). Привязка к
+    // ПРАВОМУ КРАЮ: позиции пересчитываются при resize — на весь экран полоски
+    // остаются в углу. Текст над полосками убран (данные — в оверлее отладки).
+    let hudCenterX = app.screen.width - 126;
     // ХП: рамка 407×64 (линия 315×24 на 46,20), сжата до 220px ширины
     const heroHpBar = makeSpriteBar(uiTex.bar, uiTex.hpLine, [46, 20], [315, 24]);
     heroHpBar.root.scale.set(220 / 407);
-    heroHpBar.root.position.set(hudCenterX - 110, 44);
     // Опыт: узкая рамка 220×14 → 176px (scale 0.8), центр = центр ХП-полосы
     const heroXpBar = makeSpriteBar(uiTex.xpFrame, uiTex.line, [5, 3], [210, 8]);
     heroXpBar.root.scale.set(0.8);
-    heroXpBar.root.position.set(hudCenterX - 88, 83);
+    const placeHeroHud = () => {
+        hudCenterX = app.screen.width - 126;
+        heroHpBar.root.position.set(hudCenterX - 110, 12);
+        heroXpBar.root.position.set(hudCenterX - 88, 51);
+    };
+    placeHeroHud();
+    app.renderer.on("resize", placeHeroHud);
+    hud.container.addChild(heroHpBar.root, heroXpBar.root);
     hud.container.addChild(heroHpBar.root, heroXpBar.root);
     hud.container.addChild(heroHpBar.root, heroXpBar.root);
     // Герой ходит по «рядам ног» объектов: между рядами порядок задают
@@ -622,10 +623,8 @@
             debug.info["Взгляд"] = characters.facingName(wolfId);
             debug.info["Тайлов на экране"] = tiles.stats().tiles;
             debug.info["Сущностей ECS"] = world.entities.length;
-            // HUD героя + боевые статы в оверлее отладки
+            // Полоски героя + боевые статы в оверлее отладки
             const hs = combat.stat(wolfId);
-            hud.setText("heroLvl",
-                `Волк · ур. ${hs.lvl} · ${Math.ceil(COMPONENTS.hp[wolfId])}/${COMPONENTS.maxHp[wolfId]}`);
             heroHpBar.set(combat.hpRatio(wolfId));
             heroXpBar.set(combat.xpRatio(wolfId));
             debug.info["ХП"] = `${Math.ceil(COMPONENTS.hp[wolfId])}/${COMPONENTS.maxHp[wolfId]} · опыт ${hs.xp}/${xpToNext(hs.lvl)}`;
