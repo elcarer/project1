@@ -22,7 +22,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ENGINE = os.path.normpath(os.path.join(HERE, ".."))
 DST = os.path.join(HERE, "embedded_assets.js")
 
-TILES = ["grass_dirt.png", "grass_water.png", "snow_dirt.png", "sand_dirt.png"]
+TILES = ["grass_dirt.png", "grass_water.png", "snow_dirt.png", "sand_dirt.png", "dungeon_dirt.png"]
 WOLF_PNG = os.path.join(ENGINE, "images", "sprites", "wolf_64.png")
 WOLF_JSON = os.path.join(ENGINE, "images", "sprites", "wolf_64.json")
 SPRITES_DIR = os.path.join(ENGINE, "images", "sprites")
@@ -31,12 +31,13 @@ UI_DIR = os.path.join(ENGINE, "images", "ui")
 
 
 def collect_ui(directory):
-    """Одиночные png интерфейса (курсор, рамки, линии полос) — без манифестов."""
+    """Одиночные png интерфейса (курсор, рамки, фон меню, кнопки) — без
+    манифестов. WebP-lossless: start.png весит ~2МБ, в base64 экономия существенна."""
     ui = {}
     if os.path.isdir(directory):
         for fn in sorted(os.listdir(directory)):
             if fn.endswith(".png"):
-                ui[fn[:-4]] = png_data_url(os.path.join(directory, fn))
+                ui[fn[:-4]] = webp_data_url(os.path.join(directory, fn))
     return ui
 
 

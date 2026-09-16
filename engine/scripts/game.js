@@ -421,7 +421,7 @@
     // ===== Текстуры тайлсетов =====
     setStage("загрузка тайлсетов…", 0.02);
     await frame();
-    const TILESETS = ["grass_dirt.png", "grass_water.png", "snow_dirt.png", "sand_dirt.png"];
+    const TILESETS = ["grass_dirt.png", "grass_water.png", "snow_dirt.png", "sand_dirt.png", "dungeon_dirt.png"];
     const tileTex = {};
     for (const name of TILESETS) {
         tileTex[name] = FILE_MODE
@@ -462,6 +462,44 @@
         })),
     });
 
+    // ===== Подземелье: генерируемый регион в дальнем углу карты ================
+    // Комнаты+коридоры (generateDungeonLayout) запекаются ПОВЕРХ природного
+    // пола тайлсетом dungeon_dirt (двойная сетка «пол ↔ стена»), стены —
+    // коллизии; внутри живёт гарнизон подземельных врагов, у входа — портал
+    // (cave_rock) в мир, в данже — выход и портал на следующий этаж (rune_gate).
+    const DUN = {
+        w: 46, h: 34,
+        x0: W - 46 - 8, y0: H - 34 - 8, // правый нижний угол карты
+        depth: 1, maxDepth: 3,
+        layout: null, garrison: [], portalCd: 0,
+    };
+    const dungeonWall = new Uint8Array(W * H);
+    let mapTex = null; // мини-карта (сбрасывается при смене планировки данжа)
+    const inDun = (gx, gy) => gx >= DUN.x0 - 1 && gx < DUN.x0 + DUN.w + 1 &&
+                             gy >= DUN.y0 - 1 && gy < DUN.y0 + DUN.h + 1;
+    // объекты мира не растут в регионе данжа
+    gen.placements = gen.placements.filter(([, x, y]) => !inDun(x, y));
+    function carveDungeon(depth) {
+        DUN.depth = depth;
+        DUN.layout = generateDungeonLayout(DUN.w, DUN.h, (SEED * 7919 + depth * 1013) >>> 0);
+        dungeonWall.fill(0);
+        for (let gy = 0; gy < DUN.h; gy++) {
+            for (let gx = 0; gx < DUN.w; gx++) {
+                if (DUN.layout.walls[gy * DUN.w + gx]) dungeonWall[(DUN.y0 + gy) * W + (DUN.x0 + gx)] = 1;
+            }
+        }
+        // тайлы: перезапись углов региона (outside=1 — внешний периметр замкнут)
+        const regionMask = { w: DUN.w, h: DUN.h, data: DUN.layout.walls };
+        const dt = atlas["dungeon_dirt.png"].textures;
+        for (let j = 0; j <= DUN.h; j++) {
+            for (let i = 0; i <= DUN.w; i++) {
+                cornerTex[(DUN.y0 + j) * (W + 1) + (DUN.x0 + i)] =
+                    dt[dual.tileIndex(regionMask, i, j, { outside: 1 })];
+            }
+        }
+        mapTex = null; // мини-карта перерисуется с планировкой
+    }
+
     // ===== Пол: запекание слоёв редактора в ОДИН слой ещё при загрузке =====
     // Четыре слоя нужны только редактору (для рисования). Тайлы dualgrid
     // непрозрачны (фон запечён в каждый тайл), поэтому для каждого угла двойной
@@ -495,6 +533,9 @@
             cornerTex[j * (W + 1) + i] = tex;
         }
     }
+    // Тайлсет подземелья: нарезка + запекание региона поверх природного пола
+    atlas["dungeon_dirt.png"] = dual.sliceTileset(tileTex["dungeon_dirt.png"]);
+    carveDungeon(1);
     const tilesHolder = new PIXI.Container(); // тайлы — ниже объектов
     worldContainer.addChild(tilesHolder);
 
@@ -541,7 +582,7 @@
         const gx = Math.floor(px / TS), gy = Math.floor(py / TS);
         if (gx < 0 || gy < 0 || gx >= W || gy >= H) return true; // за краем карты — стены
         const k = gy * W + gx;
-        return waterMask[k] === 1 || solid.blocked[k] === 1;
+        return waterMask[k] === 1 || solid.blocked[k] === 1 || dungeonWall[k] === 1;
     }
 
     // Спавн: ближайшее к центру кольцо карт, где вся зона 3×3 клеток свободна
@@ -682,8 +723,7 @@
     // меню игры (полоса + панели), кэш иконок дерева, мини-карта мира
     let gamemenu = null;
     const menuIcons = {};
-    let mapTex = null;
-    function getMapImage() { // 1px карты = 1 тайл: вода/лес/открытая местность
+    function getMapImage() { // 1px карты = 1 тайл: вода/лес/поля + планировка данжа
         if (!mapTex) {
             const canvas = document.createElement("canvas");
             canvas.width = W; canvas.height = H;
@@ -691,8 +731,15 @@
             for (let gy = 0; gy < H; gy++) {
                 for (let gx = 0; gx < W; gx++) {
                     const k = gy * W + gx;
-                    ctx.fillStyle = waterMask[k] === 1 ? "#3a6ea8"
-                        : forest[k] === 1 ? "#2d5a2d" : "#7d9c55";
+                    let c;
+                    if (inDun(gx, gy) && DUN.layout) {
+                        c = DUN.layout.walls[(gy - DUN.y0) * DUN.w + (gx - DUN.x0)]
+                            ? "#2b2933" : "#8a8578";
+                    } else {
+                        c = waterMask[k] === 1 ? "#3a6ea8"
+                            : forest[k] === 1 ? "#2d5a2d" : "#7d9c55";
+                    }
+                    ctx.fillStyle = c;
                     ctx.fillRect(gx, gy, 1, 1);
                 }
             }
@@ -822,6 +869,16 @@
         rat:     { speed: 140, detect: 110, leash: 220, patrol: 80 },
         wolf:    { speed: 135, detect: 165, leash: 330, patrol: 120 }, // лесной охотник
         octopus: { speed: 100, detect: 110, leash: 200, patrol: 80, swim: true },
+        // ── подземелье
+        bat:      { speed: 150, detect: 190, leash: 320, patrol: 90 },
+        spike:    { speed: 110, detect: 150, leash: 260, patrol: 80 },
+        spiderman:{ speed: 120, detect: 170, leash: 320, patrol: 90 },
+        mummy:    { speed: 105, detect: 160, leash: 300, patrol: 80 },
+        hound:    { speed: 140, detect: 180, leash: 340, patrol: 100 },
+        imp:      { speed: 125, detect: 160, leash: 300, patrol: 90 },
+        succubus: { speed: 115, detect: 170, leash: 320, patrol: 90 },
+        vampire:  { speed: 130, detect: 180, leash: 340, patrol: 100 },
+        dark:     { speed: 110, detect: 170, leash: 320, patrol: 90 },
     };
     // «Зона достижимости оружия» (reach из ATTACK_CONFIGS) — дистанция атаки ИИ.
     // Ближний бой подходит БЛИЖЕ (0.6·reach): эффект оружия бьёт перед взглядом,
@@ -881,12 +938,15 @@
             },
             weaponMin: es.weaponMin, xpReward: es.xp, special: es.special || null,
         });
-        enemies.push({ name: kind, id, size: ch.size });
+        const en = { name: kind, id, size: ch.size };
+        enemies.push(en);
+        return en;
     }
     // Листы врагов — один вид грузится один раз (кэш менеджера ассетов);
     // волк на file:// берётся из EMBED.wolf (в chars его нет — лист героя)
     const enemyKinds = {};
-    const ENEMY_SHEETS = ["goba", "shaman", "dwarf", "orc", "ogr", "spider", "rat", "wolf", "octopus"];
+    const ENEMY_SHEETS = ["goba", "shaman", "dwarf", "orc", "ogr", "spider", "rat", "wolf", "octopus",
+        "bat", "spike", "spiderman", "mummy", "hound", "imp", "succubus", "vampire", "dark"];
     for (let i = 0; i < ENEMY_SHEETS.length; i++) {
         const kind = ENEMY_SHEETS[i];
         setStage(`расселение врагов… (${kind})`, 0.76 + (i / ENEMY_SHEETS.length) * 0.14);
@@ -909,6 +969,7 @@
     const forestSpots = [], waterSpots = [];
     for (let gy = 1; gy < H - 1; gy++) {
         for (let gx = 1; gx < W - 1; gx++) {
+            if (inDun(gx, gy)) continue; // дикие враги не живут в данже
             const k = gy * W + gx;
             const px = (gx + 0.5) * TS, py = (gy + 1) * TS;
             if (forest[k] && !blocked(px, py)) forestSpots.push([px, py]);
@@ -945,6 +1006,7 @@
         if (Math.max(Math.abs(gx - spawnTileX), Math.abs(gy - spawnTileY)) < 20) continue;
         if (!villageSites.every((s) => Math.max(Math.abs(s[0] - gx), Math.abs(s[1] - gy)) >= 45)) continue;
         if (blocked((gx + 0.5) * TS, (gy + 1) * TS)) continue;
+        if (inDun(gx, gy)) continue; // регион данжа — только подземельные враги
         villageSites.push([gx, gy]);
     }
     villageSites.forEach(([gx, gy], i) => {
@@ -972,6 +1034,130 @@
         const [x, y] = waterSpots[i];
         spawnEnemy("octopus", x, y);
     }
+
+    // ── Порталы подземелья: вход в мире, выход/спуск внутри ──────────────────
+    // Гарнизон: 1-2 врага на комнату, пул зависит от глубины; на дне (3 этаж)
+    // в дальней комнате — элитный вампир.
+    const DUN_POOLS = {
+        1: ["bat", "spike", "spiderman"],
+        2: ["mummy", "hound", "imp", "bat"],
+        3: ["succubus", "vampire", "dark", "hound"],
+    };
+    let portals = [];       // активные порталы: { x, y, kind, sprite? }
+    let dunPortalSprites = []; // спрайты порталов внутри данжа (чистятся при смене)
+    function placePortalSprite(objName, x, y) {
+        const item = objItems.find((o) => o.name === objName) || objItems.find((o) => o.name === "rune_gate") || objItems[0];
+        const sprite = new PIXI.Sprite(item.texture);
+        sprite.anchor.set(0.5, 1);
+        sprite.position.set(x, y);
+        sprite.zIndex = y;
+        const gy = Math.max(0, Math.min(H, Math.floor(y / TS)));
+        rows[gy].addChild(sprite);
+        return sprite;
+    }
+    function clearDunPortals() {
+        for (const p of dunPortalSprites) p.removeFromParent();
+        dunPortalSprites.length = 0;
+    }
+    function despawnGarrison() {
+        for (const en of DUN.garrison) {
+            if (!DATA.spriteMap[en.id]) continue; // уже убран боевой системой (смерть+тление)
+            const sp = DATA.spriteMap[en.id];
+            sp.removeFromParent();
+            DATA.spriteMap[en.id] = null;
+            projectiles.BOUND[en.id] = null;
+            ECS.removeEntity(world, en.id);
+            const k = creatureRowTrack.findIndex((e) => e.id === en.id);
+            if (k !== -1) { creatureRowTrack.splice(k, 1); creatureRowCache.splice(k, 1); }
+            const e2 = enemies.findIndex((x) => x.id === en.id);
+            if (e2 !== -1) enemies.splice(e2, 1);
+        }
+        DUN.garrison.length = 0;
+    }
+    function roomCenter(ri) {
+        const r = DUN.layout.rooms[ri];
+        return { x: (DUN.x0 + r.x + r.w / 2) * TS, y: (DUN.y0 + r.y + r.h / 2 + 0.5) * TS };
+    }
+    function enterDungeon(depth) {
+        if (depth > DUN.maxDepth) return;
+        clearDunPortals();
+        despawnGarrison();
+        carveDungeon(depth);
+        // гарнизон по комнатам (кроме комнаты входа)
+        const pool = DUN_POOLS[depth] || DUN_POOLS[1];
+        for (let ri = 1; ri < DUN.layout.rooms.length; ri++) {
+            const r = DUN.layout.rooms[ri];
+            const n = 1 + ((Math.random() * 2) | 0);
+            for (let k = 0; k < n; k++) {
+                const gx = DUN.x0 + r.x + ((Math.random() * r.w) | 0);
+                const gy = DUN.y0 + r.y + ((Math.random() * r.h) | 0);
+                const spot = freeSpotNear((gx + 0.5) * TS, (gy + 1) * TS);
+                const kind = pool[(Math.random() * pool.length) | 0];
+                DUN.garrison.push(spawnEnemy(kind, spot.x, spot.y));
+            }
+        }
+        portals = [];
+        const spawnC = roomCenter(DUN.layout.spawn);
+        dunPortalSprites.push(placePortalSprite("rune_gate", spawnC.x, spawnC.y));
+        portals.push({ x: spawnC.x, y: spawnC.y, kind: "exit" });
+        if (depth < DUN.maxDepth) {
+            const exitC = roomCenter(DUN.layout.exit);
+            dunPortalSprites.push(placePortalSprite("rune_gate", exitC.x, exitC.y));
+            portals.push({ x: exitC.x, y: exitC.y, kind: "descend" });
+        } else {
+            const c = roomCenter(DUN.layout.exit); // дно: элитный страж
+            DUN.garrison.push(spawnEnemy("vampire", c.x + TS, c.y));
+        }
+        // рядом с порталом выхода, НЕ на нём (иначе кд истечёт — и тут же выход)
+        COMPONENTS.positionX[heroId] = spawnC.x + 56;
+        COMPONENTS.positionY[heroId] = spawnC.y;
+        DUN.portalCd = 2;
+        logEvent(`Подземелье: этаж ${depth} — врагов ${DUN.garrison.length}`, "#cc7dee");
+        fx.text(spawnC.x, spawnC.y - 60, `ЭТАЖ ${depth}`, { color: "#cc7dee", size: 30, life: 1.6, rise: 20 });
+        tiles.rebuild();
+    }
+    function backToWorld() {
+        clearDunPortals();
+        despawnGarrison();
+        portals = [worldPortal];
+        COMPONENTS.positionX[heroId] = worldPortal.x + 34;
+        COMPONENTS.positionY[heroId] = worldPortal.y;
+        DUN.portalCd = 2;
+        logEvent("Возврат в открытый мир", "#cc7dee");
+        tiles.rebuild();
+    }
+    function usePortal(p) {
+        DUN.portalCd = 2.5;
+        fx.burst(COMPONENTS.positionX[heroId], COMPONENTS.positionY[heroId] - 16,
+            { count: 14, color: 0xcc7dee, speedMax: 130, life: 0.6 });
+        if (p.kind === "enter") enterDungeon(1);
+        else if (p.kind === "descend") enterDungeon(DUN.depth + 1);
+        else backToWorld();
+    }
+    // Вход в подземелье: пещера в 25..55 клетках от спавна (кольца, 3×3 свободно)
+    let worldPortal = null;
+    (function placeEntrance() {
+        const sx = Math.floor(spawn.x / TS), sy = Math.floor(spawn.y / TS);
+        for (let r = 25; r <= 55; r++) {
+            for (let dy = -r; dy <= r; dy += 2) {
+                for (let dx = -r; dx <= r; dx += 2) {
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+                    const gx = sx + dx, gy = sy + dy;
+                    if (gx < 2 || gy < 2 || gx >= W - 2 || gy >= H - 2) continue;
+                    let ok = true;
+                    for (let oy = -1; oy <= 1 && ok; oy++)
+                        for (let ox = -1; ox <= 1 && ok; ox++)
+                            if (blocked((gx + ox + 0.5) * TS, (gy + oy + 1) * TS)) ok = false;
+                    if (!ok) continue;
+                    const px = (gx + 0.5) * TS, py = (gy + 1) * TS;
+                    placePortalSprite("cave_rock", px, py);
+                    worldPortal = { x: px, y: py, kind: "enter" };
+                    portals.push(worldPortal);
+                    return;
+                }
+            }
+        }
+    })();
 
     // ===== Модули: ввод, камера-слежение, отладка =====
     const input = createInput(); // endFrame зовёт сцена В КОНЦЕ кадра (см. ниже)
@@ -1064,6 +1250,15 @@
             if (input.wasPressed("Digit2")) abilities.use(1);
             if (input.wasPressed("Digit3")) abilities.use(2);
             abilities.update(ticker);
+            // Порталы подземелья: подходишь вплотную — переход (с перезарядкой)
+            if (DUN.portalCd > 0) DUN.portalCd -= dt;
+            else {
+                for (const p of portals) {
+                    const dx = COMPONENTS.positionX[heroId] - p.x;
+                    const dy = COMPONENTS.positionY[heroId] - p.y;
+                    if (dx * dx + dy * dy < 26 * 26) { usePortal(p); break; }
+                }
+            }
             // Оверлей отладки: параметры мира и живое состояние сущности из компонентов
             debug.info["Сид"] = SEED;
             debug.info["Карта"] = `${W}×${H}, объектов ${gen.placements.length}, POI ${gen.pois.length}`;
@@ -1167,6 +1362,9 @@
         get abilities() { return abilities; },
         abilitiesState: () => (abilities ? abilities.snapshot() : null),
         get gamemenu() { return gamemenu; },
+        get DUN() { return DUN; },
+        get portals() { return portals; },
+        enterDungeon, backToWorld,
         gameLog: () => gameLog,
         libraryUnlocked,
         learn: (idx) => {

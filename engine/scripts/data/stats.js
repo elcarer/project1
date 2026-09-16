@@ -76,6 +76,16 @@ const ENEMY_STATS = {
     rat:     { lvl: 1, prim: { str: 2, agi: 4, vit: 2, spd: 5, wis: 1 }, weaponMin: 1, xp: 5 },
     wolf:    { lvl: 3, prim: { str: 6, agi: 6, vit: 5, spd: 6, wis: 2 }, weaponMin: 2, xp: 20 },
     octopus: { lvl: 2, prim: { str: 4, agi: 3, vit: 4, spd: 3, wis: 2 }, weaponMin: 1, xp: 10 },
+    // ── подземелье (генерируемые этажи; сырьё — ENEMY_BESTIARY, data/enemies.js)
+    bat:      { lvl: 4, prim: { str: 5, agi: 5, vit: 4, spd: 6, wis: 1 }, weaponMin: 3, xp: 25 },
+    spike:    { lvl: 4, prim: { str: 7, agi: 2, vit: 7, spd: 3, wis: 1 }, weaponMin: 3, xp: 25 },
+    spiderman:{ lvl: 3, prim: { str: 4, agi: 4, vit: 4, spd: 3, wis: 4 }, weaponMin: 1, xp: 20, special: { poison: 6 } },
+    mummy:    { lvl: 4, prim: { str: 4, agi: 2, vit: 6, spd: 3, wis: 2 }, weaponMin: 2, xp: 30 },
+    hound:    { lvl: 5, prim: { str: 7, agi: 5, vit: 5, spd: 5, wis: 1 }, weaponMin: 4, xp: 35 },
+    imp:      { lvl: 4, prim: { str: 5, agi: 4, vit: 5, spd: 4, wis: 3 }, weaponMin: 2, xp: 25 },
+    succubus: { lvl: 5, prim: { str: 4, agi: 4, vit: 6, spd: 4, wis: 4 }, weaponMin: 2, xp: 35 },
+    vampire:  { lvl: 7, prim: { str: 6, agi: 4, vit: 7, spd: 4, wis: 3 }, weaponMin: 3, xp: 55 },
+    dark:     { lvl: 6, prim: { str: 7, agi: 3, vit: 7, spd: 4, wis: 3 }, weaponMin: 3, xp: 45 },
 };
 
 // Подключение двумя способами (файл без import/export валиден и как ES-модуль):
