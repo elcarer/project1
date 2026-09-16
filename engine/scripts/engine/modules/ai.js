@@ -60,6 +60,8 @@ function createEnemyAI({ world, ECS, COMPONENTS, addSystem = null,
             attackR, attackCd,
             speed0: COMPONENTS.ctrlSpeed[id],
             atkCd: 0,
+            stuckT: 0, lastX: COMPONENTS.positionX[id], lastY: COMPONENTS.positionY[id],
+            side: 0,
             t: 0.5 + Math.random() * 2, // старт патруля вразнобой
             pause: 1,                   // 1 = стоит на паузе между waypoint'ами
             wpx: COMPONENTS.positionX[id],
@@ -173,12 +175,35 @@ function createEnemyAI({ world, ECS, COMPONENTS, addSystem = null,
                         // В зоне достижимости оружия: стоим и атакуем с перезарядкой
                         // (цель передаётся прицелом — летящий снаряд летит в неё)
                         drive(id, 0, 0);
+                        s.stuckT = 0;
                         if (s.atkCd <= 0 && !COMPONENTS.ctrlLock[id]) {
                             characters.playAttack(id, hero);
                             s.atkCd = s.attackCd;
                         }
                     } else {
-                        seek(id, s, hero.x, hero.y);
+                        // Обход препятствий (лёгкий): преследуя героя по прямой,
+                        // враг вязнет на камнях/деревьях — если 1.2с нет смещения,
+                        // 1.2с идём перпендикуляром, потом снова прямо
+                        const moved = Math.hypot(COMPONENTS.positionX[id] - s.lastX,
+                                                 COMPONENTS.positionY[id] - s.lastY);
+                        s.lastX = COMPONENTS.positionX[id]; s.lastY = COMPONENTS.positionY[id];
+                        if (moved < 2) {
+                            s.stuckT += dt;
+                            if (s.stuckT > 1.2 && !s.side) {
+                                s.side = (Math.random() < 0.5 ? 1 : -1);
+                                s.sideT = 1.2;
+                                s.stuckT = 0;
+                            }
+                        } else s.stuckT = 0;
+                        if (s.side) {
+                            s.sideT -= dt;
+                            const vx = hero.x - x, vy = hero.y - y;
+                            const vd = Math.hypot(vx, vy) || 1;
+                            seek(id, s, x + (-vy / vd) * 48 * s.side, y + (vx / vd) * 48 * s.side);
+                            if (s.sideT <= 0) s.side = 0;
+                        } else {
+                            seek(id, s, hero.x, hero.y);
+                        }
                     }
                     break;
                 }

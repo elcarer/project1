@@ -560,10 +560,17 @@
     }
     setStage(`ECS-сущности объектов (0/${objSprites.length})…`, 0.62);
     await frame();
+    const treeObjects = []; // кроны: { id, x0, y0, x1, y1 } — для прозрачности над героем
     for (let n = 0; n < objSprites.length; n++) {
         const sp = objSprites[n];
         rows[Math.min(H, Math.round(sp.y / TS))].addChild(sp); // y спрайта = точка ног
         const id = ECS.addEntity(world);
+        const placement = gen.placements[n];
+        if (placement && registry[placement[0]] && registry[placement[0]].group === "trees") {
+            const reg = registry[placement[0]];
+            treeObjects.push({ id, x0: placement[1] - 1.2, y0: placement[2] - 1.2,
+                               x1: placement[1] + reg.cellsX + 1.2, y1: placement[2] + reg.cellsY + 1.2 });
+        }
         ECS.addComponent(world, id, "positionX", sp.x);
         ECS.addComponent(world, id, "positionY", sp.y);
         ECS.addComponent(world, id, "spriteMap", sp); // → renderable: позиция и culling ядра
@@ -671,6 +678,10 @@
         onLevelUp(id, lvl) {
             logEvent(`Достигнут уровень ${lvl}: +1 очко характеристик, +1 очко умений`, "#cc7dee");
         },
+        // смерть героя — в журнал (возрождение через 2.5с)
+        onDeath(id) {
+            if (id === heroId) logEvent("Герой пал в бою… возрождение", "#ff7d6e");
+        },
         // «Получив урон, зовёт соратников» — особая способность гоблина
         // (special.call, ENEMY_STATS): соратники в радиусе N клеток бросают
         // патруль и бегут на героя
@@ -715,6 +726,22 @@
         heroRow = r;
     }
     gatedAddSystem(heroRowFollow);
+    // Кроны деревьев над героем становятся прозрачными (бой в лесу не «вслепую»);
+    // проверка раз в 0.2с — кроны статичны, герой меняет клетку не чаще
+    let canopyT = 0;
+    gatedAddSystem((ticker) => {
+        canopyT -= (ticker && ticker.deltaMS || 16) / 1000;
+        if (canopyT > 0) return;
+        canopyT = 0.2;
+        if (heroId === null) return;
+        const hx = COMPONENTS.positionX[heroId] / TS, hy = COMPONENTS.positionY[heroId] / TS;
+        for (const t of treeObjects) {
+            const sp = DATA.spriteMap[t.id];
+            if (!sp) continue;
+            const over = hx >= t.x0 && hx <= t.x1 && hy >= t.y0 && hy <= t.y1;
+            sp.alpha = over ? 0.35 : 1;
+        }
+    });
 
     // ── СПАВН ГЕРОЯ выбранного класса (лобби/«Продолжить») ──────────────────
     // Лист класса, ECS-сущность, привязка атаки, ролевые статы класса

@@ -73,7 +73,7 @@ const ENEMY_STATS = {
     orc:     { lvl: 3, prim: { str: 6, agi: 3, vit: 5, spd: 3, wis: 1 }, weaponMin: 2, xp: 16, special: { stoneskin: 12 } },
     ogr:     { lvl: 5, prim: { str: 9, agi: 2, vit: 9, spd: 2, wis: 2 }, weaponMin: 3, xp: 35 },
     spider:  { lvl: 2, prim: { str: 4, agi: 4, vit: 3, spd: 4, wis: 1 }, weaponMin: 1, xp: 10, special: { poison: 2 } },
-    rat:     { lvl: 1, prim: { str: 2, agi: 4, vit: 2, spd: 5, wis: 1 }, weaponMin: 1, xp: 5 },
+    rat:     { lvl: 1, prim: { str: 2, agi: 4, vit: 1, spd: 5, wis: 1 }, weaponMin: 1, xp: 5 },
     wolf:    { lvl: 3, prim: { str: 6, agi: 6, vit: 5, spd: 6, wis: 2 }, weaponMin: 2, xp: 20 },
     octopus: { lvl: 2, prim: { str: 4, agi: 3, vit: 4, spd: 3, wis: 2 }, weaponMin: 1, xp: 10 },
     // ── подземелье (генерируемые этажи; сырьё — ENEMY_BESTIARY, data/enemies.js)

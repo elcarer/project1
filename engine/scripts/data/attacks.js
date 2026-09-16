@@ -20,7 +20,7 @@
 // существования ЛЕТЯЩЕГО снаряда (сек; у melee длительность считает модуль).
 const ATTACK_CONFIGS = {
     // ── ближний бой: взмах/укус перед собой
-    bite:           { sheet: "bite",           kind: "melee",  reach: 36,  speed: 0,   fps: 8, cd: 0.4 },
+    bite:           { sheet: "bite",           kind: "melee",  reach: 36,  speed: 0,   fps: 8, cd: 0.8 },
     sword:          { sheet: "sword",          kind: "melee",  reach: 46,  speed: 0,   fps: 8, cd: 0.7 },
     swordHound:     { sheet: "swordHound",     kind: "melee",  reach: 44,  speed: 0,   fps: 8, cd: 0.7 },
     axe:            { sheet: "axe",            kind: "melee",  reach: 44,  speed: 0,   fps: 8, cd: 0.6 },

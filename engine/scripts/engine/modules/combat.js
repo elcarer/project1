@@ -36,7 +36,7 @@ const POISON_TICK = 1.0;   // яд тикает раз в секунду (1 ур
 
 function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
                         characters, projectiles, fx, onRemove = null, onKill = null,
-                        onDamaged = null, onLevelUp = null }) {
+                        onDamaged = null, onLevelUp = null, onDeath = null }) {
     if (!characters || !projectiles || !fx) throw new Error("createCombat: нужны characters, projectiles и fx");
     const clamp = (v, lo, hi) => (v < lo ? lo : (v > hi ? hi : v));
     // ХП — существующие компоненты health.js (повторная регистрация идемпотентна)
@@ -247,6 +247,7 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
             if (s.hero) {
                 s.statPoints += 1;
                 s.abilityPoints += 1;
+                COMPONENTS.hp[id] = s.dop.hpMax; // уровень — полное здоровье
                 floatText(id, `УРОВЕНЬ ${s.lvl} · +1 очко`, "#cc7dee", 28, 1.6);
                 if (onLevelUp) onLevelUp(id, s.lvl);
             } else {
@@ -313,6 +314,7 @@ function createCombat({ world, ECS, COMPONENTS, DATA, addSystem = null,
         const s = STAT[id];
         if (!s || s.dead) return;
         s.dead = true;
+        if (s.hero && onDeath) onDeath(id, killerId);
         COMPONENTS.ctrlLock[id] = 1;  // мёртвым не управляют ни ввод, ни покой
         COMPONENTS.ctrlMove[id] = 0;
         COMPONENTS.ctrlSpeed[id] = 0; // и не ходят
